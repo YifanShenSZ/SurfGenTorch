@@ -1,4 +1,4 @@
-# ArgumentParser
+# argparse
 A slimline C++ class for parsing command-line arguments, with an interface similar to python's class of the same name.
 
 ## Usage

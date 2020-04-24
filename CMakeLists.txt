@@ -22,6 +22,7 @@ include_directories(Cpp-Library_v1.0.0)
 include_directories(include)
 add_executable(SurfGenTorch.exe
     source/Main.cpp
+    source/DimRed.cpp
 )
 target_link_libraries(SurfGenTorch.exe "${TORCH_LIBRARIES}" FL)
 set_property(TARGET SurfGenTorch.exe PROPERTY CXX_STANDARD 14)
