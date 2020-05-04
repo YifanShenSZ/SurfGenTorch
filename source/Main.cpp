@@ -8,66 +8,58 @@
 #include "../include/AbInitio.hpp"
 #include "../include/DimRed.hpp"
 
-// Command line input
 argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
     argparse::ArgumentParser parser("Surface generation package based on libtorch");
-    // file format: Columbus7 or default
-    parser.add_argument("-f", "--format", 1, false);
-    // internal coordinate definition file
-    parser.add_argument("-i", "--internal_coordinate_definition", 1, false);
-    // job type: pretrain, train, continue or analyze
-    parser.add_argument("-j", "--job", 1, false);
-    // simply restart previous training
-    parser.add_argument("-r", "--restart");
-    // ---------- Parameters to start a new fit ----------
-        // number of electronic states, required for a new fit
-        parser.add_argument("-n", "--NStates", 1);
-        // internal coordinate space origin, required for a new fit
-        parser.add_argument("-o", "--origin", 1);
-        // zero of potential energy, default = 0
-        parser.add_argument("-z", "--zero_point", 1);
-        // data set directories, required for a new fit
-        parser.add_argument("-d", "--data_set", '+');
-        // states 1 to valid_states[i] are valid in data_set[i]
-        parser.add_argument("-v", "--valid_states", '+');
-        // fit coefficient to continue with
-        parser.add_argument("-c", "--fit_coefficient", 1);
-    // ----------------------- End -----------------------
+    
+    // required argument
+    parser.add_argument("-f", "--format", 1, false, "file format: Columbus7 or default");
+    parser.add_argument("-i", "--IntCoordDef", 1, false, "internal coordinate definition file");
+    parser.add_argument("-j", "--job", 1, false, "job type: pretrain, train");
+    parser.add_argument("-o", "--origin", 1, false, "internal coordinate space origin");
+
+    parser.add_argument("-c", "--check_point", 1, true, "check point to continue with");
+
+    parser.add_argument("-r", "--restart", 0, true, "simply restart previous training");
+
+    // pretrain
+    parser.add_argument("-s", "--symmetry", '+', true, "symmetry (internal dimension / irreducible representation)");
+    parser.add_argument("-d", "--data_set", '+', true, "data set directories");
+    parser.add_argument("-t", "--data_type", 1, true, "data type: float, double, default = float");
+    
+    // train
+    parser.add_argument("-z", "--zero_point", 1, true, "zero of potential energy, default = 0");
+    parser.add_argument("-n", "--NStates", 1, true, "number of electronic states");
+    parser.add_argument("-v", "--valid_states", '+', true, "states 1 to valid_states[i] are valid in data_set[i]");
+
     parser.parse_args(argc, argv);
     return parser;
 }
 
-// Program initializer
-void initialize(const int & NState) {
-    srand((unsigned)time(NULL));
-    FL::Chemistry::InitializePhaseFixing(NState);
-}
-
 int main(int argc, const char** argv) {
+    // welcome
     std::cout << "SurfGenTorch: surface generation package based on libtorch\n";
     std::cout << "Yifan Shen 2020\n\n";
     general::ShowTime();
-
+    // global initialization
     srand((unsigned)time(NULL));
 
+    // command line input
+    std::cout << "Echo of user command line input:\n";
+    std::cout << argv[0];
+    for (size_t i = 1; i < argc; i++) std::cout << ' ' << argv[i];
+    std::cout << "\n\n";
     argparse::ArgumentParser args = parse_args(argc, argv);
 
     std::string format = args.retrieve<std::string>("format");
-    std::cout << "File format = " + format + "\n";
+    std::cout << "File format: " + format + "\n";
 
-    std::string IntCoordDef = args.retrieve<std::string>("internal_coordinate_definition");
+    std::string IntCoordDef = args.retrieve<std::string>("IntCoordDef");
     int intdim = FL::GeometryTransformation::DefineInternalCoordinate(format, IntCoordDef);
     std::cout << "Internal coordinate space dimension = " << intdim << '\n';
     
     std::string job = args.retrieve<std::string>("job");
     std::cout << "Job type: " + job << '\n';
 
-if (args.gotArgument("restart")) {
-    // TO BE IMPLEMENTED
-    return 1;
-}
-
-if (job == "pretrain") {
     int cartdim;
     auto top = at::TensorOptions().dtype(torch::kFloat64);
     at::Tensor origin = at::zeros(intdim, top);
@@ -81,25 +73,59 @@ if (job == "pretrain") {
         FL::GeometryTransformation::InternalCoordinate(molorigin.geom().data(), origin.data_ptr<double>(), cartdim, intdim);
     }
 
-    std::vector<std::string> data_set = args.retrieve<std::vector<std::string>>("data_set");
-
-    AbInitio::DataSet<AbInitio::geom<double>> * GeomSet;
-    AbInitio::read_GeomSet(data_set, origin, intdim, GeomSet);
-    std::cout << "Number of geometries = " << GeomSet->size_int() << '\n';
-
-    size_t batch_size = omp_get_num_threads();
-    std::cout << "batch size = " << batch_size << '\n';
-    auto geom_loader = torch::data::make_data_loader<torch::data::samplers::RandomSampler>(
-    * GeomSet, batch_size);
-
-    int count = 0;
-    for (auto & batch : * geom_loader) {
-        std::cout << batch[0]->intgeom() << '\n';
-        count++;
+if (job == "pretrain") {
+    std::vector<size_t> symmetry;
+    if (args.gotArgument("symmetry")) {
+        symmetry = args.retrieve<std::vector<size_t>>("symmetry");
+        std::cout << "Number of irreducible representations = " << symmetry.size() << '\n';
+        if (std::accumulate(symmetry.begin(), symmetry.end(), 0) != intdim)
+        throw std::invalid_argument("Every dimension must be assigned to an irreducible");
+    } else {
+        symmetry.resize(1);
+        symmetry[0] = intdim;
+        std::cout << "No symmetry\n";
     }
-    std::cout << count;
 
-} else if (job == "train") {
+    std::vector<std::string> data_set = args.retrieve<std::vector<std::string>>("data_set");
+    std::cout << "The training set will be read from: " << data_set[0];
+    for (size_t i = 1; i < data_set.size(); i++) std::cout << ", " << data_set[i];
+    std::cout << '\n';
+
+    std::string data_type = "float";
+    if (args.gotArgument("data_type")) data_type = args.retrieve<std::string>("data_type");
+    std::cout << "Data type in use: " << data_type << '\n';
+
+    if (data_type == "double") {
+        AbInitio::DataSet<AbInitio::geom<double>> * GeomSet;
+        AbInitio::read_GeomSet(data_set, origin, intdim, GeomSet);
+        std::cout << "Number of geometries = " << GeomSet->size_int() << '\n';
+    
+        size_t batch_size = 10 * omp_get_max_threads();
+        batch_size = batch_size < GeomSet->size_int() ? batch_size : GeomSet->size_int();
+        std::cout << "batch size = " << batch_size << '\n';
+        auto geom_loader = torch::data::make_data_loader(* GeomSet, batch_size);
+    
+        auto reduction_net = std::make_shared<DimRed::Net>(symmetry);
+        reduction_net->to(torch::kFloat64);
+        
+        DimRed::pretrain(geom_loader, reduction_net, batch_size);
+    } else {
+        AbInitio::DataSet<AbInitio::geom<float>> * GeomSet;
+        AbInitio::read_GeomSet(data_set, origin, intdim, GeomSet);
+        std::cout << "Number of geometries = " << GeomSet->size_int() << '\n';
+    
+        size_t batch_size = 10 * omp_get_max_threads();
+        batch_size = batch_size < GeomSet->size_int() ? batch_size : GeomSet->size_int();
+        std::cout << "batch size = " << batch_size << '\n';
+        auto geom_loader = torch::data::make_data_loader(* GeomSet, batch_size);
+    
+        auto reduction_net = std::make_shared<DimRed::Net>(symmetry);
+
+        DimRed::pretrain(geom_loader, reduction_net, batch_size);
+    }
+}
+
+if (job == "train") {
     int NStates = args.retrieve<int>("NStates");
     
     int cartdim;
@@ -134,14 +160,15 @@ if (job == "pretrain") {
     
     size_t batch_size = omp_get_num_threads();
     std::cout << "batch size = " << batch_size << '\n';
-    auto RegularData_loader = torch::data::make_data_loader<torch::data::samplers::RandomSampler>(
-    * RegularDataSet, batch_size);
-    auto DegenerateData_loader = torch::data::make_data_loader<torch::data::samplers::RandomSampler>(
-    * DegenerateDataSet, batch_size);
-    //for (auto & batch : * RegularData_loader) {
-    //    std::cout << batch[0]->energy() << '\n';
-    //}
+    auto RegularData_loader = torch::data::make_data_loader(* RegularDataSet, batch_size);
+    auto DegenerateData_loader = torch::data::make_data_loader(* DegenerateDataSet, batch_size);
+
+    FL::Chemistry::InitializePhaseFixing(NStates);
 }
 
-return 0;
+    std::cout << '\n';
+    general::ShowTime();
+    std::cout << "Mission success\n";
+
+    return 0;
 }

@@ -163,9 +163,15 @@ namespace argparse {
         typedef std::vector<String> StringVector;
         typedef std::vector<Argument> ArgumentVector;
 
-        // --------------------------------------------------------------------------
+        // Member variables
+        IndexMap index_;
+        bool ignore_first_, use_exceptions_;
+        size_t required_;
+        String app_help_, app_name_, final_name_;
+        ArgumentVector arguments_;
+        StringVector variables_;
+
         // Argument
-        // --------------------------------------------------------------------------
         static String delimit(const String& name) {
             return String(std::min(name.size(), (size_t)2), '-').append(name);
         }
@@ -187,9 +193,10 @@ namespace argparse {
         }
 
         struct Argument {
-            Argument() : short_name(""), name(""), optional(true), fixed_nargs(0), fixed(true) {}
-            Argument(const String& _short_name, const String& _name, bool _optional, char nargs)
-                    : short_name(_short_name), name(_name), optional(_optional) {
+            Argument() : short_name(""), name(""), help(""), optional(true), fixed_nargs(0), fixed(true) {}
+            Argument(const String& _short_name, const String& _name, const String& _help,
+            bool _optional, char nargs)
+            : short_name(_short_name), name(_name), help(_help), optional(_optional) {
                 if (nargs == '+' || nargs == '*') {
                     variable_nargs = nargs;
                     fixed = false;
@@ -198,15 +205,12 @@ namespace argparse {
                     fixed = true;
                 }
             }
-            String short_name;
-            String name;
-            bool optional;
+            String short_name, name, help;
+            bool optional, fixed, specified = false;
             union {
                 size_t fixed_nargs;
                 char variable_nargs;
             };
-            bool fixed;
-            bool specified = false;
             String canonicalName() const { return (name.empty()) ? short_name : name; }
             String toString(bool named = true) const {
                 std::ostringstream s;
@@ -243,9 +247,7 @@ namespace argparse {
             if (!arg.optional) required_++;
         }
 
-        // --------------------------------------------------------------------------
         // Error handling
-        // --------------------------------------------------------------------------
         void argumentError(const std::string& msg, bool show_usage = false) {
             if (use_exceptions_) throw std::invalid_argument(msg);
             std::cerr << "ArgumentParser error: " << msg << std::endl;
@@ -253,70 +255,59 @@ namespace argparse {
             exit(-5);
         }
 
-        // --------------------------------------------------------------------------
-        // Member variables
-        // --------------------------------------------------------------------------
-        IndexMap index_;
-        bool ignore_first_;
-        bool use_exceptions_;
-        size_t required_;
-        String help_information_;
-        String app_name_;
-        String final_name_;
-        ArgumentVector arguments_;
-        StringVector variables_;
-
     public:
         ArgumentParser() : ignore_first_(true), use_exceptions_(false), required_(0) {
-            help_information_ = " ";
-            Argument arg(verify("-h"), verify("--help"), true, 0);
+            app_help_ = " ";
+            Argument arg(verify("-h"), verify("--help"), "show this help message and exit", true, 0);
             insertArgument(arg);
         }
-        ArgumentParser(const String & help_information) : ignore_first_(true), use_exceptions_(false), required_(0) {
-            help_information_  = help_information + "\n";
-            Argument arg(verify("-h"), verify("--help"), true, 0);
+        ArgumentParser(const String & app_help) : ignore_first_(true), use_exceptions_(false), required_(0) {
+            app_help_  = app_help + "\n";
+            Argument arg(verify("-h"), verify("--help"), "show this help message and exit", true, 0);
             insertArgument(arg);
         }
-        // --------------------------------------------------------------------------
+
         // add_argument
-        // --------------------------------------------------------------------------
         void appName(const String& name) { app_name_ = name; }
-        void add_argument(const String& name, char nargs = 0, bool optional = true) {
+        void add_argument(const String& name,
+        char nargs = 0, bool optional = true, const String& help = "") {
             if (name.size() > 2) {
-                Argument arg("", verify(name), optional, nargs);
+                Argument arg("", verify(name), help, optional, nargs);
                 insertArgument(arg);
             } else {
-                Argument arg(verify(name), "", optional, nargs);
+                //Argument arg(verify(name), "", help, optional, nargs);
+                Argument arg(verify(name), name, help, optional, nargs);
                 insertArgument(arg);
             }
         }
-        void add_argument(const String& short_name, const String& name, char nargs = 0,
-                         bool optional = true) {
-            Argument arg(verify(short_name), verify(name), optional, nargs);
+        void add_argument(const String& short_name, const String& name,
+        char nargs = 0, bool optional = true, const String& help = "") {
+            Argument arg(verify(short_name), verify(name), help, optional, nargs);
             insertArgument(arg);
         }
-        void add_FinalArgument(const String& name, char nargs = 1, bool optional = false) {
+        void add_FinalArgument(const String& name,
+        char nargs = 1, bool optional = false, const String& help = "") {
             final_name_ = delimit(name);
-            Argument arg("", final_name_, optional, nargs);
+            Argument arg("", final_name_, help, optional, nargs);
             insertArgument(arg);
         }
         void ignoreFirstArgument(bool ignore_first) { ignore_first_ = ignore_first; }
         String verify(const String& name) {
             if (name.empty()) argumentError("argument names must be non-empty");
-            if ((name.size() == 2 && name[0] != '-') || name.size() == 3)
+            //if ((name.size() == 2 && name[0] != '-') || name.size() == 3)
+            if (name.size() == 1 || (name.size() == 2 && name[0] != '-'))
                 argumentError(String("invalid argument '")
                                   .append(name)
                                   .append("'. Short names must begin with '-'"));
-            if (name.size() > 3 && (name[0] != '-' || name[1] != '-'))
+            //if (name.size() > 3 && (name[0] != '-' || name[1] != '-'))
+            if (name.size() > 2 && (name[0] != '-' || name[1] != '-'))
                 argumentError(String("invalid argument '")
                                   .append(name)
-                                  .append("'. Multi-character names must begin with '--'"));
+                                  .append("'. Long names must begin with '--'"));
             return name;
         }
 
-        // --------------------------------------------------------------------------
         // Parse
-        // --------------------------------------------------------------------------
         void parse_args(size_t argc, const char** argv) {
             parse_args(StringVector(argv, argv + argc));
             if (gotArgument("help")) {
@@ -324,7 +315,6 @@ namespace argparse {
                 exit(-5);
             };
         }
-
         void parse_args(const StringVector& argv) {
             // check if the app is named
             if (app_name_.empty() && ignore_first_ && !argv.empty()) app_name_ = argv[0];
@@ -413,24 +403,21 @@ namespace argparse {
                 argumentError(String("too few required arguments passed to ").append(app_name_), true);
         }
 
-        // --------------------------------------------------------------------------
         // Retrieve
-        // --------------------------------------------------------------------------
-        template <typename T>
-        T retrieve(const String& name) {
+        template <typename T> T retrieve(const String& name) {
             if (! gotArgument(name)) throw std::out_of_range("argparse::ArgumentParser::retrieve failed: key not found: "+name);
             size_t N = index_[delimit(name)];
             return castTo<T>(variables_[N]);
         }
 
-        // --------------------------------------------------------------------------
         // Properties
-        // --------------------------------------------------------------------------
         String usage() {
             // premable app name
             std::ostringstream help;
-            help << "Usage: \n" << help_information_ << '\n' << escape(app_name_);
-            size_t indent = help.str().size();
+            help << "Usage: \n" << app_help_ << '\n';
+            String app_name = escape(app_name_);
+            size_t indent = app_name.size();
+            help << app_name;
             size_t linelength = 0;
 
             // get the required arguments
@@ -478,6 +465,24 @@ namespace argparse {
                 help << argstr;
             }
 
+            help << "\n\n";
+            help << "required arguments:\n";
+            for (ArgumentVector::const_iterator it = arguments_.begin(); it != arguments_.end(); ++it) {
+                Argument arg = *it;
+                if (arg.optional) continue;
+                if (arg.name.compare(final_name_) == 0) continue;
+                help << arg.name << " | " << arg.help << '\n';
+            }
+
+            help << '\n';
+            help << "optional arguments:\n";
+            for (ArgumentVector::const_iterator it = arguments_.begin(); it != arguments_.end(); ++it) {
+                Argument arg = *it;
+                if (!arg.optional) continue;
+                if (arg.name.compare(final_name_) == 0) continue;
+                help << arg.name << " | " << arg.help << '\n';
+            }
+            
             return help.str();
         }
         void useExceptions(bool state) { use_exceptions_ = state; }
@@ -500,8 +505,8 @@ namespace argparse {
     };
 }
 
-template<typename T>
-std::ostream& operator << (std::ostream& out, const std::vector<T>& v) {
+template<typename T> std::ostream& operator << 
+(std::ostream& out, const std::vector<T>& v) {
     out << "[";
     for(unsigned long i = 0; i < v.size(); ++i) {
         if (i > 0)
@@ -513,8 +518,7 @@ std::ostream& operator << (std::ostream& out, const std::vector<T>& v) {
     return out;
 }
 
-template<typename T>
-typename argparse::enable_if<argparse::is_standard_type<T>, std::istream&>
+template<typename T> typename argparse::enable_if<argparse::is_standard_type<T>, std::istream&>
 ::type operator >> (std::istream& in, std::vector<T>& v) {
     using namespace argparse;
     v.clear();
@@ -537,8 +541,7 @@ typename argparse::enable_if<argparse::is_standard_type<T>, std::istream&>
     return in;
 }
 
-template<typename T>
-typename argparse::enable_if<argparse::is_standard_type<T>, std::istream&>
+template<typename T> typename argparse::enable_if<argparse::is_standard_type<T>, std::istream&>
 ::type operator >> (std::istream& in, std::vector<std::vector<T> >& v) {
     using namespace argparse;
     static const std::string delimiter = "]";

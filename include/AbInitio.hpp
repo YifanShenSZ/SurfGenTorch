@@ -69,7 +69,7 @@ template <class T> class GeomLoader { public:
 };
 template <class T> class geom : protected GeomLoader<T> {
     public:
-        inline geom(GeomLoader<double> loader)
+        inline geom(const GeomLoader<double> & loader)
         : GeomLoader<T>(loader.cartdim_, loader.intdim_) {
             GeomLoader<T>::cartgeom_.copy_(loader.cartgeom_);
             GeomLoader<T>::intgeom_.copy_(loader.intgeom_);
@@ -130,7 +130,7 @@ template <class T> class RegularData : protected DataLoader<T> {
     protected:
         T weight_ = 1.0;
     public:
-        RegularData(DataLoader<double> loader)
+        RegularData(const DataLoader<double> & loader)
         : DataLoader<T>(loader.cartdim_, loader.intdim_, loader.NStates_) {
             DataLoader<T>::cartgeom_.copy_(loader.cartgeom_);
             DataLoader<T>::intgeom_.copy_(loader.intgeom_);
@@ -162,7 +162,7 @@ template <class T> class DegenerateData : public RegularData<T> {
     protected:
         at::Tensor H_;
     public:
-        DegenerateData(DataLoader<double> loader)
+        DegenerateData(const DataLoader<double> & loader)
         : RegularData<T>(loader) {
             at::Tensor eigval, eigvec;
             if (std::is_same<T, double>::value) {
@@ -201,7 +201,7 @@ template <class T> class DataSet : public torch::data::datasets::Dataset<DataSet
         inline ~DataSet() {}
 
         inline size_t size_int() const {return example_.size();}
-        inline std::vector<T*> example() const {return example_;}
+        //inline std::vector<T*> example() const {return example_;}
 };
 
 template <typename T> void read_GeomSet(
