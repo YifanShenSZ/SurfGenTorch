@@ -40,11 +40,15 @@ const size_t & epoch = 1000, const size_t & follow = 1) {
             loss = deviation[0];
             for (size_t i = 1; i < batch.size(); i++) loss += deviation[i];
             loss.backward();
-
             optimizer.step();
         }
         if (iepoch % follow == 0) {
-            std::cout << "Epoch: " << iepoch << " | Loss: " << loss.item<float>() << '\n';
+            at::Tensor norm = net->parameters()[0].grad().norm(1);
+            for (size_t i = 1; i < net->parameters().size(); i++)
+            norm += net->parameters()[i].grad().norm(1);           
+            std::cout << "Epoch = " << iepoch
+                      << ", Loss = " << loss.item<float>()
+                      << ", ||Gradient|| = " << norm.item<float>() << '\n';
             torch::save(net, "pretrain.pt");
         }
     }

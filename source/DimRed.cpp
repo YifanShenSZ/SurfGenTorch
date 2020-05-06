@@ -8,20 +8,29 @@ Net::Net(const std::vector<size_t> & dim_per_irred) {
     dim_per_irred_ = dim_per_irred;
 
     fc.resize(dim_per_irred_.size());
+    for (size_t iirred = 0; iirred < dim_per_irred_.size(); iirred++) {
+        fc[iirred].resize(dim_per_irred_[iirred]-1);
+        for (size_t idim = 0; idim < dim_per_irred_[iirred]-1; idim++) {
+            fc[iirred][idim] = new torch::nn::Linear{nullptr};
+            * fc[iirred][idim] = register_module(
+            "fc-"+std::to_string(iirred)+"-"+std::to_string(idim),
+            torch::nn::Linear(torch::nn::LinearOptions(dim_per_irred_[iirred]-idim, dim_per_irred_[iirred]-idim-1)
+            .bias(false)));
+    } }
+
     fc_inv.resize(dim_per_irred_.size());
     for (size_t iirred = 0; iirred < dim_per_irred_.size(); iirred++) {
-    fc[iirred].resize(dim_per_irred_[iirred]-1);
-    fc_inv[iirred].resize(dim_per_irred_[iirred]-1);
-    for (size_t idim = 0; idim < dim_per_irred_[iirred]-1; idim++) {
-        fc[iirred][idim] = new torch::nn::Linear{nullptr};
-        * fc[iirred][idim] = register_module(
-        "fc-"+std::to_string(iirred)+"-"+std::to_string(idim),
-        torch::nn::Linear(torch::nn::LinearOptions(dim_per_irred_[iirred]-idim, dim_per_irred_[iirred]-idim-1).bias(false)));
-        fc_inv[iirred][idim] = new torch::nn::Linear{nullptr};
-        * fc_inv[iirred][idim] = register_module(
-        "fc_inv-"+std::to_string(iirred)+"-"+std::to_string(idim),
-        torch::nn::Linear(torch::nn::LinearOptions(idim+1, idim+2).bias(false)));
+        fc_inv[iirred].resize(dim_per_irred_[iirred]-1);
+        for (size_t idim = 0; idim < dim_per_irred_[iirred]-1; idim++) {
+            fc_inv[iirred][idim] = new torch::nn::Linear{nullptr};
+            * fc_inv[iirred][idim] = register_module(
+            "fc_inv-"+std::to_string(iirred)+"-"+std::to_string(idim),
+            torch::nn::Linear(torch::nn::LinearOptions(idim+1, idim+2)
+            .bias(false)));
     } }
+
+    torch::NoGradGuard no_grad;
+    for (auto & p : this->parameters()) p *= 10.0;
 }
 
 torch::Tensor Net::forward(const torch::Tensor & x) {

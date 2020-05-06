@@ -107,7 +107,7 @@ if (job == "pretrain") {
     
         auto reduction_net = std::make_shared<DimRed::Net>(symmetry);
         reduction_net->to(torch::kFloat64);
-        
+
         DimRed::pretrain(geom_loader, reduction_net, batch_size);
     } else {
         AbInitio::DataSet<AbInitio::geom<float>> * GeomSet;
