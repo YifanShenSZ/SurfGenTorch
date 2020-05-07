@@ -13,57 +13,31 @@
 
 namespace general {
 
-inline void ShowTime() {
-    time_t now = time(0);
-    char * dt = ctime(&now);
-    std::cout << dt << '\n';
-}
+void ShowTime();
+
+// Get the file name from a path (no need to use this since c++17)
+std::string GetFileName(std::string path, bool withExtension = true, char seperator = '/');
+
+// Get the prefix from a path (no need to use this since c++17)
+std::string GetPrefix(std::string path, char seperator = '/');
 
 // Get the number of lines in a file
-inline size_t NLines(const std::string & file) {
-    size_t n = 0;
-    std::ifstream ifs; ifs.open(file);
-        while (ifs.good()) {
-            std::string line;
-            std::getline(ifs, line);
-            n++;
-        } n--;
-    ifs.close();
-    return n;
-}
+size_t NLines(const std::string & file);
 
 // Get the number of strings in a file
-inline size_t NStrings(const std::string & file) {
-    size_t n = 0;
-    std::ifstream ifs; ifs.open(file);
-        while (ifs.good()) {
-            std::string str;
-            ifs >> str;
-            n++;
-        } n--;
-    ifs.close();
-    return n;
-}
+size_t NStrings(const std::string & file);
 
 // Split text with some delimiter
-// text_split harvests the splitted string vector
 // White space delimiter
-inline void split(const std::string & text, std::vector<std::string> & text_split) {
-    std::istringstream iss(text);
-    std::vector<std::string> result(std::istream_iterator<std::string>{iss}, std::istream_iterator<std::string>());
-    text_split = result;
-}
+std::vector<std::string> split(const std::string & text);
+// White space delimiter
+// text_split harvests the splitted string vector
+void split(const std::string & text, std::vector<std::string> & text_split);
 // Any single character delimiter
-inline void split(const std::string & text, std::vector<std::string> & text_split, char delimiter) {
-    size_t current, previous = 0;
-    current = text.find(delimiter);
-    while (current != std::string::npos) {
-        text_split.push_back(text.substr(previous, current - previous));
-        previous = current + 1;
-        current = text.find(delimiter, previous);
-    }
-    text_split.push_back(text.substr(previous, current - previous));
-}
+std::vector<std::string> split(const std::string & text, const char & delimiter);
+// Any single character delimiter
+// text_split harvests the splitted string vector
+void split(const std::string & text, std::vector<std::string> & text_split, const char & delimiter);
 
 // Allocate (deallocate) continuous memory for an n-dimensional array A(N1, N2, ..., Nn)
 // Matrix

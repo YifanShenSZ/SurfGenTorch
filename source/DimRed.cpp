@@ -30,7 +30,7 @@ Net::Net(const std::vector<size_t> & dim_per_irred) {
     } }
 
     torch::NoGradGuard no_grad;
-    for (auto & p : this->parameters()) p *= 10.0;
+    for (at::Tensor & p : this->parameters()) p *= 10.0;
 }
 
 torch::Tensor Net::forward(const torch::Tensor & x) {
@@ -46,12 +46,16 @@ torch::Tensor Net::forward(const torch::Tensor & x) {
         // Reduce dimensionality
         for (size_t idim = 0; idim < dim_per_irred_[iirred]-1; idim++) {
             x_per_irred[iirred] = (*fc[iirred][idim])->forward(x_per_irred[iirred]);
+            
             x_per_irred[iirred] = torch::tanh(x_per_irred[iirred]);
+            // x_per_irred[iirred] = torch::nn::functional::tanhshrink(x_per_irred[iirred]);
         }
         // Inverse the reduction
         for (size_t idim = 0; idim < dim_per_irred_[iirred]-1; idim++) {
             x_per_irred[iirred] = (*fc_inv[iirred][idim])->forward(x_per_irred[iirred]);
+            
             x_per_irred[iirred] = torch::tanh(x_per_irred[iirred]);
+            // x_per_irred[iirred] = torch::nn::functional::tanhshrink(x_per_irred[iirred]);
         }
     }
     // Output the original dimension

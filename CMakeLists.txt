@@ -9,20 +9,21 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -mkl -m64 -xCORE-AVX2 -mtune=co
 
 # libtorch
 set(CMAKE_PREFIX_PATH /home/yshen/Software/Programming/libtorch-cpu)
-find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+find_package(Torch REQUIRED)
 
 # Fortran-Library
 include_directories(/home/yshen/Library/Fortran-Library/include)
 link_directories(/home/yshen/Library/Fortran-Library/lib)
 
 # Cpp-Library
-include_directories(Cpp-Library_v1.0.0)
+add_subdirectory(Cpp-Library_v1.0.0)
 
 include_directories(include)
 add_executable(SurfGenTorch.exe
     source/Main.cpp
     source/DimRed.cpp
+    source/utility.cpp
 )
-target_link_libraries(SurfGenTorch.exe "${TORCH_LIBRARIES}" FL)
+target_link_libraries(SurfGenTorch.exe "${TORCH_LIBRARIES}" FL CL)
 set_property(TARGET SurfGenTorch.exe PROPERTY CXX_STANDARD 14)

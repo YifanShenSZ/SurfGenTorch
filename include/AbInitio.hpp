@@ -18,6 +18,7 @@ In addition, geometries can be extracted alone to feed pretraining
 #include <torch/torch.h>
 #include <FortranLibrary.hpp>
 #include "../Cpp-Library_v1.0.0/general.hpp"
+#include "../Cpp-Library_v1.0.0/chemistry.hpp"
 #include "../Cpp-Library_v1.0.0/torch_LinearAlgebra.hpp"
 
 #define QuasiDegThresh 0.0001
@@ -228,14 +229,13 @@ DataSet<geom<T>> * & GeomSet) {
         // cartgeom
         std::ifstream ifs;
         ifs.open(data_set[its]+"geom.data");
-            for (size_t i = 0; i < NDataPerSet[its]; i++) {
-                for (size_t j = 0; j < cartdim / 3; j++) {
-                    std::string line; ifs >> line;
-                    double dbletemp;
-                    ifs >> dbletemp; RawGeomLoader[i].cartgeom_[3*j  ] = dbletemp;
-                    ifs >> dbletemp; RawGeomLoader[i].cartgeom_[3*j+1] = dbletemp;
-                    ifs >> dbletemp; RawGeomLoader[i].cartgeom_[3*j+2] = dbletemp;
-                }
+            for (size_t i = 0; i < NDataPerSet[its]; i++)
+            for (size_t j = 0; j < cartdim / 3; j++) {
+                std::string line; ifs >> line;
+                double dbletemp;
+                ifs >> dbletemp; RawGeomLoader[i].cartgeom_[3*j  ] = dbletemp;
+                ifs >> dbletemp; RawGeomLoader[i].cartgeom_[3*j+1] = dbletemp;
+                ifs >> dbletemp; RawGeomLoader[i].cartgeom_[3*j+2] = dbletemp;
             }
         ifs.close();
         // Process raw data
@@ -291,45 +291,38 @@ DataSet<RegularData<T>> * & RegularDataSet, DataSet<DegenerateData<T>> * & Degen
         for (size_t i = 0; i < NDataPerSet[its]; i++) RawDataLoader[i].init(cartdim, intdim, NStates);
         // cartgeom
         ifs.open(data_set[its]+"geom.data");
-            for (size_t i = 0; i < NDataPerSet[its]; i++) {
-                for (size_t j = 0; j < cartdim / 3; j++) {
-                    std::string line; ifs >> line;
-                    double dbletemp;
-                    ifs >> dbletemp; RawDataLoader[i].cartgeom_[3*j  ] = dbletemp;
-                    ifs >> dbletemp; RawDataLoader[i].cartgeom_[3*j+1] = dbletemp;
-                    ifs >> dbletemp; RawDataLoader[i].cartgeom_[3*j+2] = dbletemp;
-                }
+            for (size_t i = 0; i < NDataPerSet[its]; i++)
+            for (size_t j = 0; j < cartdim / 3; j++) {
+                std::string line; ifs >> line;
+                double dbletemp;
+                ifs >> dbletemp; RawDataLoader[i].cartgeom_[3*j  ] = dbletemp;
+                ifs >> dbletemp; RawDataLoader[i].cartgeom_[3*j+1] = dbletemp;
+                ifs >> dbletemp; RawDataLoader[i].cartgeom_[3*j+2] = dbletemp;
             }
         ifs.close();
         // energy
         ifs.open(data_set[its]+"energy.data");
-            for (size_t i = 0; i < NDataPerSet[its]; i++) {
-                for (size_t j = 0; j < NStates; j++) {
-                    double dbletemp;
-                    ifs >> dbletemp;
-                    RawDataLoader[i].energy_[j] = dbletemp;
-                }
+            for (size_t i = 0; i < NDataPerSet[its]; i++)
+            for (size_t j = 0; j < NStates; j++) {
+                double dbletemp; ifs >> dbletemp;
+                RawDataLoader[i].energy_[j] = dbletemp;
             }
         ifs.close();
         // dH
         for (size_t istate = 0; istate < NStates; istate++) {
             ifs.open(data_set[its]+"cartgrad-"+std::to_string(istate+1)+".data");
-                for (size_t i = 0; i < NDataPerSet[its]; i++) {
-                    for (size_t j = 0; j < cartdim; j++) {
-                        double dbletemp;
-                        ifs >> dbletemp;
-                        RawDataLoader[i].dH_[istate][istate][j] = dbletemp;
-                    }
+                for (size_t i = 0; i < NDataPerSet[its]; i++)
+                for (size_t j = 0; j < cartdim; j++) {
+                    double dbletemp; ifs >> dbletemp;
+                    RawDataLoader[i].dH_[istate][istate][j] = dbletemp;
                 }
             ifs.close();
         for (size_t jstate = istate; jstate < NStates; jstate++) {
             ifs.open(data_set[its]+"cartgrad-"+std::to_string(istate+1)+"-"+std::to_string(jstate+1)+".data");
-                for (size_t i = 0; i < NDataPerSet[its]; i++) {
-                    for (size_t j = 0; j < cartdim; j++) {
-                        double dbletemp;
-                        ifs >> dbletemp;
-                        RawDataLoader[i].dH_[istate][jstate][j] = dbletemp;
-                    }
+                for (size_t i = 0; i < NDataPerSet[its]; i++)
+                for (size_t j = 0; j < cartdim; j++) {
+                    double dbletemp; ifs >> dbletemp;
+                    RawDataLoader[i].dH_[istate][jstate][j] = dbletemp;
                 }
             ifs.close();
         } }

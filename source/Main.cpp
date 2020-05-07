@@ -4,9 +4,9 @@
 #include <FortranLibrary.hpp>
 #include "../Cpp-Library_v1.0.0/argparse.hpp"
 #include "../Cpp-Library_v1.0.0/general.hpp"
-#include "../Cpp-Library_v1.0.0/chemistry.hpp"
 #include "../include/AbInitio.hpp"
 #include "../include/DimRed.hpp"
+#include "../include/utility.hpp"
 
 argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
     argparse::ArgumentParser parser("Surface generation package based on libtorch");
@@ -40,6 +40,7 @@ int main(int argc, const char** argv) {
     std::cout << "SurfGenTorch: surface generation package based on libtorch\n";
     std::cout << "Yifan Shen 2020\n\n";
     general::ShowTime();
+    std::cout << '\n';
     // global initialization
     srand((unsigned)time(NULL));
 
@@ -61,17 +62,8 @@ int main(int argc, const char** argv) {
     std::cout << "Job type: " + job << '\n';
 
     int cartdim;
-    auto top = at::TensorOptions().dtype(torch::kFloat64);
-    at::Tensor origin = at::zeros(intdim, top);
-    if (format == "Columbus7") {
-        chemistry::xyz_mass<double> molorigin(args.retrieve<std::string>("origin"), true);
-        cartdim = 3 * molorigin.NAtoms();
-        FL::GeometryTransformation::InternalCoordinate(molorigin.geom().data(), origin.data_ptr<double>(), cartdim, intdim);
-    } else {
-        chemistry::xyz<double> molorigin(args.retrieve<std::string>("origin"), true);
-        cartdim = 3 * molorigin.NAtoms();
-        FL::GeometryTransformation::InternalCoordinate(molorigin.geom().data(), origin.data_ptr<double>(), cartdim, intdim);
-    }
+    at::Tensor origin;
+    std::tie(cartdim, origin) = cartdim_origin(format, args.retrieve<std::string>("origin"), intdim);
 
 if (job == "pretrain") {
     std::vector<size_t> symmetry;
@@ -86,10 +78,18 @@ if (job == "pretrain") {
         std::cout << "No symmetry\n";
     }
 
-    std::vector<std::string> data_set = args.retrieve<std::vector<std::string>>("data_set");
-    std::cout << "The training set will be read from: " << data_set[0];
-    for (size_t i = 1; i < data_set.size(); i++) std::cout << ", " << data_set[i];
-    std::cout << '\n';
+    std::vector<std::string> data_set = verify_data_set(args.retrieve<std::vector<std::string>>("data_set"));
+    size_t line_length = 36;
+    std::cout << "The training set will be read from: ";
+    for (size_t i = 0; i < data_set.size()-1; i++) {
+        if (line_length > 80) {
+            std::cout << '\n' << "    ";
+            line_length = 4;
+        }
+        std::cout << data_set[i] << ", ";
+        line_length += data_set[i].size() + 2;
+    }
+    std::cout << data_set[data_set.size()-1] << '\n';
 
     std::string data_type = "float";
     if (args.gotArgument("data_type")) data_type = args.retrieve<std::string>("data_type");
@@ -99,16 +99,16 @@ if (job == "pretrain") {
         AbInitio::DataSet<AbInitio::geom<double>> * GeomSet;
         AbInitio::read_GeomSet(data_set, origin, intdim, GeomSet);
         std::cout << "Number of geometries = " << GeomSet->size_int() << '\n';
-    
+
         size_t batch_size = 10 * omp_get_max_threads();
         batch_size = batch_size < GeomSet->size_int() ? batch_size : GeomSet->size_int();
         std::cout << "batch size = " << batch_size << '\n';
         auto geom_loader = torch::data::make_data_loader(* GeomSet, batch_size);
-    
-        auto reduction_net = std::make_shared<DimRed::Net>(symmetry);
+
+        std::shared_ptr<DimRed::Net> reduction_net = std::make_shared<DimRed::Net>(symmetry);
         reduction_net->to(torch::kFloat64);
 
-        DimRed::pretrain(geom_loader, reduction_net, batch_size);
+        DimRed::pretrain(reduction_net, geom_loader, batch_size);
     } else {
         AbInitio::DataSet<AbInitio::geom<float>> * GeomSet;
         AbInitio::read_GeomSet(data_set, origin, intdim, GeomSet);
@@ -121,25 +121,12 @@ if (job == "pretrain") {
     
         auto reduction_net = std::make_shared<DimRed::Net>(symmetry);
 
-        DimRed::pretrain(geom_loader, reduction_net, batch_size);
+        DimRed::pretrain(reduction_net, geom_loader, batch_size);
     }
 }
 
 if (job == "train") {
     int NStates = args.retrieve<int>("NStates");
-    
-    int cartdim;
-    auto top = at::TensorOptions().dtype(torch::kFloat64);
-    at::Tensor origin = at::zeros(intdim, top);
-    if (format == "Columbus7") {
-        chemistry::xyz_mass<double> molorigin(args.retrieve<std::string>("origin"), true);
-        cartdim = 3 * molorigin.NAtoms();
-        FL::GeometryTransformation::InternalCoordinate(molorigin.geom().data(), origin.data_ptr<double>(), cartdim, intdim);
-    } else {
-        chemistry::xyz<double> molorigin(args.retrieve<std::string>("origin"), true);
-        cartdim = 3 * molorigin.NAtoms();
-        FL::GeometryTransformation::InternalCoordinate(molorigin.geom().data(), origin.data_ptr<double>(), cartdim, intdim);
-    }
     
     double zero_point = 0.0;
     if (args.gotArgument("zero_point")) zero_point = args.retrieve<double>("zero_point");

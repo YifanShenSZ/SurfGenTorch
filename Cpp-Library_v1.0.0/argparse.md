@@ -3,43 +3,61 @@ A slimline C++ class for parsing command-line arguments, with an interface simil
 
 ## Usage
 An example says it best:
-  
+
+    #include "argparse.hpp"
+
     int main(int argc, const char** argv) {
 
-      // make a new ArgumentParser
-      ArgumentParser parser;
+        // make a new ArgumentParser
+        argparse::ArgumentParser parser("app description");
 
-      // add some arguments to search for
-      parser.add_argument("-a");
-      parser.add_argument("-b");
-      parser.add_argument("-c", "--cactus", 1);
-      parser.add_argument("-o", "--optional");
-      parser.add_argument("-r", "--required", 1, true);
-      parser.add_argument("--five", 5);
-      parser.add_argument("--atleast", '+');
-      parser.add_argument("--any", '*');
-      parser.add_FinalArgument("output");
+        // add some arguments to search for
+        parser.add_argument("-a");
+        parser.add_argument("-c", "--cactus", 1);
+        parser.add_argument("-o", "--optional");
+        parser.add_argument("-r", "--required", 1, false);
+        parser.add_argument("-w", "--with_help", 1, true, "information");
+        parser.add_argument("--five", 5);
+        parser.add_argument("--atleast", '+');
+        parser.add_argument("--any", '*');
+        parser.add_FinalArgument("output");
 
-      // parse the command-line arguments - throws if invalid format
-      parser.parse_args(argc, argv);
+        // parse the command-line arguments - throws if invalid format
+        parser.parse_args(argc, argv);
 
-      // if we get here, the configuration is valid
-      int cactus = parser.retrieve<int>("cactus");
-      return cactus;
+        // if we get here, the configuration is valid
+        int cactus = parser.retrieve<int>("cactus");
+        return cactus;
     }
 
 If the supplied format is incorrect or we specified `-h` or `--help`, the program shows a usage string then exit:
 
-    Usage: app_name --required REQUIRED [-a] [-b] [--optional] [--cactus CACTUS] 
-                    [--five FIVE FIVE FIVE ...] [--atleast ATLEAST [ATLEAST ...]]
-                    [--any [ANY ...]] output
+    Usage: 
+    app description
+
+    app_name --required REQUIRED [--help] [-a] [--cactus CACTUS] [--optional] [--with_help WITH_HELP] [--five FIVE FIVE FIVE ...] [--atleast ATLEAST [ATLEAST...]] [--any [ANY ANY...]] OUTPUT
+    
+    required arguments:
+    --required | 
+    
+    optional arguments:
+    --help | show this help message and exit
+    -a | 
+    --cactus | 
+    --optional | 
+    --with_help | information
+    --five | 
+    --atleast | 
+    --any |
 
 ## Compiling
 Just grab the `argparse.hpp` header and go! The `ArgumentParser` is the only definition in `argparse.hpp`. Dependent classes are nested within `ArgumentParser`.
 
+It is recommended to include `argparse.hpp` only in your `main.cpp`, otherwise template linking issues may arise
+
 ## Format
 ### specifier
-Arguments can be specified in a number of formats. They can have single character short names prefixed with a single '-':
+Arguments can be specified in a number of formats. They can have single character short names (only 1 character) prefixed with a single '-':
 
     -b
 
@@ -78,7 +96,7 @@ Arguments can also be cast to other types as long as the cast is trivial. For in
 
 or convert the required argument to a float:
 
-    float  req = parser.retrieve<float>("r");
+    float req = parser.retrieve<float>("r");
 
 ## Method Summary
 |        name         |      function      |

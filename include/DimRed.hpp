@@ -22,8 +22,8 @@ struct Net : torch::nn::Module {
     torch::Tensor inverse(const torch::Tensor & x);
 };
 
-template <typename Tl, typename Tn> void pretrain(
-Tl & geom_loader, Tn net, const size_t & batch_size,
+template <typename T> void pretrain(
+std::shared_ptr<Net> net, T & geom_loader, const size_t & batch_size,
 const float & learning_rate = 0.01,
 const size_t & epoch = 1000, const size_t & follow = 1) {
     torch::optim::SGD optimizer(net->parameters(), learning_rate);
@@ -43,12 +43,14 @@ const size_t & epoch = 1000, const size_t & follow = 1) {
             optimizer.step();
         }
         if (iepoch % follow == 0) {
-            at::Tensor norm = net->parameters()[0].grad().norm(1);
-            for (size_t i = 1; i < net->parameters().size(); i++)
-            norm += net->parameters()[i].grad().norm(1);           
+            float norm = net->parameters()[0].grad().norm(1).item<float>();
+            for (size_t i = 1; i < net->parameters().size(); i++) {
+                float temp = net->parameters()[i].grad().norm(1).item<float>();
+                norm = norm > temp ? norm : temp;
+            }
             std::cout << "Epoch = " << iepoch
                       << ", Loss = " << loss.item<float>()
-                      << ", ||Gradient|| = " << norm.item<float>() << '\n';
+                      << ", ||Gradient|| = " << norm << '\n';
             torch::save(net, "pretrain.pt");
         }
     }
