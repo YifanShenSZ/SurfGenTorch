@@ -15,6 +15,8 @@ namespace general {
 
 void ShowTime();
 
+void EchoCommand(const int & argc, const char** argv);
+
 // Get the file name from a path (no need to use this since c++17)
 std::string GetFileName(std::string path, bool withExtension = true, char seperator = '/');
 

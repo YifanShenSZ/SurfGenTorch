@@ -15,6 +15,13 @@ void ShowTime() {
     std::cout << dt;
 }
 
+void EchoCommand(const int & argc, const char** argv) {
+    std::cout << "Echo of user command line input:\n";
+    std::cout << argv[0];
+    for (size_t i = 1; i < argc; i++) std::cout << ' ' << argv[i];
+    std::cout << '\n';
+}
+
 // Get the file name from a path (no need to use this since c++17)
 std::string GetFileName(std::string path, bool extension = true, char seperator = '/') {
 	std::size_t dotPos = path.rfind('.');

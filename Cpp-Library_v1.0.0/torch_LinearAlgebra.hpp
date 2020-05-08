@@ -7,6 +7,9 @@
 
 namespace torch_LinearAlgebra {
 
+// 1-norm of the network parameter gradient
+float NetGradNorm(const std::vector<at::Tensor> & parameters);
+
 // Matrix dot multiplication for 3rd-order tensor A and B
 // A.size(2) == B.size(2), A.size(1) == B.size(0)
 // result_ij = A_ikm * B_kjm

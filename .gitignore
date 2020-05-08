@@ -31,7 +31,6 @@ __pycache__/
 
 # Executables
 build/
-test/
 *.exe
 *.out
 *.app
@@ -39,3 +38,7 @@ test/
 # Visual studio and VS code
 .vscode/
 test-windows/
+
+# Test and back up
+test/
+BAK/

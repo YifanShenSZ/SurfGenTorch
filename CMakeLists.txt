@@ -21,8 +21,9 @@ add_subdirectory(Cpp-Library_v1.0.0)
 
 include_directories(include)
 add_executable(SurfGenTorch.exe
-    source/Main.cpp
+    source/main.cpp
     source/DimRed.cpp
+    source/pretrain.cpp
     source/utility.cpp
 )
 target_link_libraries(SurfGenTorch.exe "${TORCH_LIBRARIES}" FL CL)

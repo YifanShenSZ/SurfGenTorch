@@ -39,5 +39,19 @@ std::vector<std::string> verify_data_set(const std::vector<std::string> & origin
             ifs.close();
         }
     }
+    // output to job log
+    std::cout << "The training set will be read from: ";
+    size_t line_length = 36;
+    for (size_t i = 0; i < data_set.size()-1; i++) {
+        line_length += data_set[i].size() + 2;
+        if (line_length > 90) {
+            std::cout << '\n' << "    ";
+            line_length = 4;
+        }
+        std::cout << data_set[i] << ", ";
+    }
+    line_length += data_set[data_set.size()-1].size() + 2;
+    if (line_length > 90) std::cout << '\n' << "    ";
+    std::cout << data_set[data_set.size()-1] << '\n';
     return data_set;
 }
