@@ -5,8 +5,7 @@ The prerequisite of any fit is data
 Specifically, for Hd construction data comes from ab initio
 
 The ab initio data will be classified into regular or degenerate,
-based on energy gap and quasi-degeneracy threshold,
-which is defined in macro QuasiDegThresh
+based on energy gap and degeneracy threshold
 
 In addition, geometries can be extracted alone to feed pretraining
 */
@@ -21,7 +20,7 @@ In addition, geometries can be extracted alone to feed pretraining
 #include "../Cpp-Library_v1.0.0/chemistry.hpp"
 #include "../Cpp-Library_v1.0.0/torch_LinearAlgebra.hpp"
 
-#define QuasiDegThresh 0.0001
+#define DegThresh 0.0001
 
 namespace AbInitio {
 
@@ -332,7 +331,7 @@ DataSet<RegularData<T>> * & RegularDataSet, DataSet<DegenerateData<T>> * & Degen
             RawDataLoader[i].cart2int();
             RawDataLoader[i].SubtractRef(origin, zero_point);
             // Insert to data set loader
-            if (chemistry::CheckDegeneracy(QuasiDegThresh, RawDataLoader[i].energy_.data_ptr<double>(), RawDataLoader[i].NStates_)) {
+            if (chemistry::CheckDegeneracy(DegThresh, RawDataLoader[i].energy_.data_ptr<double>(), RawDataLoader[i].NStates_)) {
                 vec_p_DegenerateData[NDegenerateData] = new DegenerateData<T>(RawDataLoader[i]);
                 NDegenerateData++;
             } else {

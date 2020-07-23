@@ -19,8 +19,10 @@ int main(int argc, const char** argv) {
     srand((unsigned)time(NULL));
 
     // command line input
-    general::EchoCommand(argc, argv); std::cout << '\n';
     argparse::ArgumentParser args = parse_args(argc, argv);
+
+    std::string job = args.retrieve<std::string>("job");
+    std::cout << "Job type: " + job << '\n';
 
     std::string format = args.retrieve<std::string>("format");
     std::cout << "File format: " + format + "\n";
@@ -28,9 +30,6 @@ int main(int argc, const char** argv) {
     std::string IntCoordDef = args.retrieve<std::string>("IntCoordDef");
     int intdim = FL::GeometryTransformation::DefineInternalCoordinate(format, IntCoordDef);
     std::cout << "Internal coordinate space dimension = " << intdim << '\n';
-    
-    std::string job = args.retrieve<std::string>("job");
-    std::cout << "Job type: " + job << '\n';
 
     int cartdim; at::Tensor origin;
     std::tie(cartdim, origin) = cartdim_origin(format, args.retrieve<std::string>("origin"), intdim);
@@ -50,7 +49,7 @@ if (job == "pretrain") {
 
     std::vector<std::string> data_set = verify_data_set(args.retrieve<std::vector<std::string>>("data_set"));
 
-    std::string data_type = "float";
+    std::string data_type = "double";
     if (args.gotArgument("data_type")) data_type = args.retrieve<std::string>("data_type");
     std::cout << "Data type in use: " << data_type << '\n';
 
@@ -65,22 +64,22 @@ if (job == "pretrain") {
 }
 
 argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
+    general::EchoCommand(argc, argv); std::cout << '\n';
     argparse::ArgumentParser parser("Surface generation package based on libtorch");
-    
     // required argument
+    parser.add_argument("-j", "--job", 1, false, "job type: pretrain, train");
     parser.add_argument("-f", "--format", 1, false, "file format: Columbus7 or default");
     parser.add_argument("-i", "--IntCoordDef", 1, false, "internal coordinate definition file");
-    parser.add_argument("-j", "--job", 1, false, "job type: pretrain, train");
-    parser.add_argument("-o", "--origin", 1, false, "internal coordinate space origin");
+    parser.add_argument("-o", "--origin", 1, false, "internal coordinate space origin file");
 
     parser.add_argument("-c", "--check_point", 1, true, "check point to continue with");
 
     parser.add_argument("-r", "--restart", 0, true, "simply restart previous training");
 
     // pretrain
-    parser.add_argument("-s", "--symmetry", '+', true, "symmetry (internal dimension / irreducible representation)");
-    parser.add_argument("-d", "--data_set", '+', true, "data set list or directory");
-    parser.add_argument("-t", "--data_type", 1, true, "data type: float, double, default = float");
+    parser.add_argument("-s", "--symmetry", '+', true, "symmetry (internal dimension per irreducible representation)");
+    parser.add_argument("-d", "--data_set", '+', true, "data set list file or directory");
+    parser.add_argument("-t", "--data_type", 1, true, "data type: float, double, default = double");
     
     // train : pretrain
     parser.add_argument("-z", "--zero_point", 1, true, "zero of potential energy, default = 0");

@@ -22,7 +22,7 @@ const std::string & data_type) {
             net->to(torch::kFloat64);
             
             float learning_rate = 0.01;
-            size_t epoch = 1000;
+            size_t epoch = 10000;
             size_t follow = 100;
 
             torch::optim::SGD optimizer(net->parameters(), learning_rate);
