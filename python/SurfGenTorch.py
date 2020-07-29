@@ -1,11 +1,15 @@
-from pathlib import Path
 import logging
+from pathlib import Path
+
 import numpy
 import torch
-import PythonLibrary.utility as PLut
+
 import FortranLibrary as FL
+import PythonLibrary.utility as PLut
+
 import utility
-import symmetry
+import SSAIC
+import pretrain
 
 logger = logging.getLogger(Path(__file__).stem)
 logging.basicConfig()
@@ -17,13 +21,15 @@ if __name__ == "__main__":
     args = utility.parse_args()
     print()
     PLut.ShowTime()
-    logger.info("Job type: " + args.job)
-    logger.info("File format: " + args.format)
-    uniqintdim, UniqIntCoordDef = FL.FetchInternalCoordinateDefinition(args.format, file=args.UniqIntCoord)
-    FL.DefineInternalCoordinate(args.format, file=args.UniqIntCoord)
-    logger.info("Number of Unique internal coordinate: %d", uniqintdim)
-    cartdim, origin = utility.cartdim_origin(args.format, args.origin, uniqintdim)
+    print("Job type: " + args.job)
+    print("File format: " + args.format)
+    SSAIC.define_SSAIC(args.format, args.IntCoordDef, args.origin, args.scale_symmetry)
 
+    print()
     if args.job == 'pretrain':
-        symmetry.define_symmetry(args.symmetry)
-        data_set = utility.verify_data_set(args.data_set)
+        pretrain.pretrain(args.irreducible, args.max_depth, args.data_set,
+            chk=args.checkpoint, opt=args.optimizer, epoch=args.epoch)
+
+    print()
+    PLut.ShowTime()
+    print("Mission success")

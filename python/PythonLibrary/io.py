@@ -6,7 +6,8 @@ Input/Output routines
 
 from pathlib import Path
 from typing import List
-import math; import numpy
+import math
+import numpy
 
 # Read a vector from file (1 number/line)
 def read_vector_1(file:Path) -> numpy.ndarray:
