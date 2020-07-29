@@ -22,6 +22,7 @@ def parse_args() -> argparse.Namespace:
     # pretrain only
     parser.add_argument('-i','--irreducible', type=int, help='the irreducible to pretrain')
     parser.add_argument('-m','--max_depth', type=int, default=0, help='max depth of the pretraining network (0 means unlimited, default = 0)')
+    parser.add_argument('-f','--freeze', action="store_true", help='freeze the layers inherited from checkpoint')
     args = parser.parse_args()
     return args
 

@@ -28,7 +28,8 @@ if __name__ == "__main__":
     print()
     if args.job == 'pretrain':
         pretrain.pretrain(args.irreducible, args.max_depth, args.data_set,
-            chk=args.checkpoint, opt=args.optimizer, epoch=args.epoch)
+            chk=args.checkpoint, freeze=args.freeze,
+            opt=args.optimizer, epoch=args.epoch)
 
     print()
     PLut.ShowTime()
