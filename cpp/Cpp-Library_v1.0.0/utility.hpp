@@ -1,17 +1,17 @@
 // General basic routine
 
-#ifndef General_hpp
-#define General_hpp
+#ifndef utility_hpp
+#define utility_hpp
 
 #include <iostream>
-#include <sstream>
 #include <fstream>
+#include <sstream>
 #include <ctime>
-#include <string>
 #include <vector>
+#include <forward_list>
 #include <iterator>
 
-namespace general {
+namespace CL { namespace utility {
 
 void ShowTime();
 
@@ -29,15 +29,15 @@ size_t NLines(const std::string & file);
 // Get the number of strings in a file
 size_t NStrings(const std::string & file);
 
-// Split text with some delimiter
-// White space delimiter
+// Split text with white space
 std::vector<std::string> split(const std::string & text);
-// White space delimiter
 // text_split harvests the splitted string vector
 void split(const std::string & text, std::vector<std::string> & text_split);
-// Any single character delimiter
+// text_split harvests the splitted string forward list
+void split(const std::string & text, std::forward_list<std::string> & text_split);
+
+// Split text with any single character
 std::vector<std::string> split(const std::string & text, const char & delimiter);
-// Any single character delimiter
 // text_split harvests the splitted string vector
 void split(const std::string & text, std::vector<std::string> & text_split, const char & delimiter);
 
@@ -99,6 +99,7 @@ template <typename T> void DeleteArray(T *** & A, const int & N1) {
     }
 }
 
-} // namespace general
+} // namespace utility
+} // namespace CL
 
 #endif

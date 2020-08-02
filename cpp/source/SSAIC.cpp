@@ -13,157 +13,150 @@ The procedure of this module:
     4. Symmetry adapted linear combinate the scaled dimensionless internal coordinates
 */
 
-import logging
-from pathlib import Path
-from typing import List
-import re
+#include <regex>
+#include <torch/torch.h>
 
-import numpy
-import numpy.linalg
-import scipy.special
-import torch
+#include <FortranLibrary.hpp>
+#include "../Cpp-Library_v1.0.0/utility.hpp"
+#include "../Cpp-Library_v1.0.0/LinearAlgebra.hpp"
+#include "../Cpp-Library_v1.0.0/chemistry.hpp"
 
-import FortranLibrary as FL
-import PythonLibrary.io as PLio
+#include "../include/SSAIC.hpp"
 
-logger = logging.getLogger(Path(__file__).stem)
-logging.basicConfig()
-logger.setLevel("DEBUG")
+namespace SSAIC {
 
-# Symmetry adapted linear combination
-class SymmAdaptLinComb:
-    def __init__(self):
-        self.coeff    = []
-        self.IntCoord = []
+SymmAdaptLinComb::SymmAdaptLinComb() {}
+SymmAdaptLinComb::~SymmAdaptLinComb() {}
 
-# Internal coordinate dimension, not necessarily = cartdim - 6 or 5
-intdim = None
-# Fortran-Library internal coordinate definition
-IntCoordDef = None
-# Cartesian coordinate dimension
-cartdim = None
-# Internal coordinate origin
-origin = None
-# Internal coordinates who are scaled by themselves
-self_scaling = None
-# other_scaling[i][0] is scaled by [i][1] with alpha = [i][2]
-other_scaling = None
-# Number of irreducible representations
-NIrred = None
-# A matrix (2nd order List), as usual product table
-product_table = None
-# Number of symmetry adapted internal coordinates per irreducible
-NSAIC_per_irred = None
-# symmetry_adaptation[i][j] contains the definition of
-# j-th symmetry adapted internal coordinate in i-th irreducible
-symmetry_adaptation = None
+// Internal coordinate dimension, not necessarily = cartdim - 6 or 5
+int intdim;
+// Fortran-Library internal coordinate definition
+std::vector<FL::GT::IntCoordDef> IntCoordDef;
+// Cartesian coordinate dimension
+int cartdim;
+// Internal coordinate origin
+at::Tensor origin;
+// Internal coordinates who are scaled by themselves
+std::vector<size_t> self_scaling;
+// other_scaling[i][0] is scaled by [i][1] with alpha = [i][2]
+std::vector<std::tuple<size_t, size_t, double>> other_scaling;
+// Number of irreducible representations
+size_t NIrred;
+// A matrix (2nd order List), as usual product table
+std::vector<std::vector<size_t>> product_table;
+// Number of symmetry adapted internal coordinates per irreducible
+std::vector<size_t> NSAIC_per_irred;
+// symmetry_adaptation[i][j] contains the definition of
+// j-th symmetry adapted internal coordinate in i-th irreducible
+std::vector<std::vector<SymmAdaptLinComb>> symmetry_adaptation;
 
-def define_SSAIC(format:str, IntCoordDef_file:Path, origin_file:Path, ScaleSymm_file:Path) -> None:
-    # Internal coordinate
-    global intdim, IntCoordDef, cartdim, origin, self_scaling, other_scaling, NIrred, product_table, NSAIC_per_irred, symmetry_adaptation
-    intdim, IntCoordDef = FL.FetchInternalCoordinateDefinition(format, file=IntCoordDef_file)
-    FL.DefineInternalCoordinate(format, file=IntCoordDef_file)
-    logger.info("Number of internal coordinates: %d", intdim)
-    # Origin
-    if format == 'Columbus7':
-        NAtoms, _, _, r, _ = PLio.read_geom_Columbus7(origin_file)
-    else:
-        NAtoms, _, r = PLio.read_geom_xyz(origin_file)
-        r *= 1.8897261339212517
-    cartdim = 3 * NAtoms
-    origin = numpy.empty(intdim)
-    FL.InternalCoordinate(r, origin)
-    # Scale and symmetry
-    with open(ScaleSymm_file, 'r') as f:
-        # Internal coordinates who are scaled by themselves
-        f.readline()
-        self_scaling = []
-        while True:
-            line = f.readline().strip()
-            if not re.match('^\d+$', line): break
-            self_scaling.append(int(line)-1)
-        # Internal coordinates who are scaled by others
-        other_scaling = []
-        while True:
-            strs = f.readline().split()
-            if not re.match('^\d+$', strs[0]): break
-            other_scaling.append((int(strs[0])-1, int(strs[1])-1, float(strs[2])))
-        # Number of irreducible representations
-        NIrred = int(f.readline())
-        # Product table
-        f.readline()
-        product_table = []
-        for _ in range(NIrred):
-            temp = f.readline().split()
-            for _ in range(len(temp)): temp[_] = int(temp[_]) - 1
-            product_table.append(temp)
-        # Number of symmetry adapted coordinates per irreducible
-        f.readline()
-        NSAIC_per_irred = f.readline().split()
-        for _ in range(len(NSAIC_per_irred)): NSAIC_per_irred[_] = int(NSAIC_per_irred[_])
-        # Symmetry adapted linear combinations of each irreducible
-        f.readline()
-        symmetry_adaptation = []
-        for _ in range(NIrred):
-            SALC_list = []
-            SALC_index = -1
-            while True:
-                line = f.readline()
-                if not line: break
-                strs = line.split()
-                if not re.match('-?\d+', strs[0]): break
-                if re.match('^\d+$', strs[0]):
-                    SALC_index += 1
-                    SALC_list.append(SymmAdaptLinComb())
-                    del strs[0]
-                SALC_list[SALC_index].coeff   .append(float(strs[0]))
-                SALC_list[SALC_index].IntCoord.append(int(strs[1])-1)
-            # Normalize linear combination coefficients
-            for SALC in SALC_list:
-                norm = numpy.linalg.norm(numpy.array(SALC.coeff))
-                for _ in range(len(SALC.coeff)): SALC.coeff[_] /= norm
-            symmetry_adaptation.append(SALC_list)
+void define_SSAIC(const std::string & format, const std::string & IntCoordDef_file, const std::string & origin_file, const std::string & ScaleSymm_file) {
+    // Internal coordinate
+    FL::GT::FetchInternalCoordinateDefinition(format, IntCoordDef_file, intdim, IntCoordDef);
+    FL::GT::DefineInternalCoordinate(format, IntCoordDef_file);
+    std::cout << "Number of internal coordinates: " << intdim << '\n';
+    // Origin
+    c10::TensorOptions top = at::TensorOptions().dtype(torch::kFloat64);
+    origin = at::empty(intdim, top);
+    if (format == "Columbus7") {
+        CL::chemistry::xyz_mass<double> molorigin(origin_file, true);
+        cartdim = 3 * molorigin.NAtoms();
+        FL::GT::InternalCoordinate(molorigin.geom().data(), origin.data_ptr<double>(), cartdim, intdim);
+    }
+    else {
+        CL::chemistry::xyz<double> molorigin(origin_file, true);
+        cartdim = 3 * molorigin.NAtoms();
+        FL::GT::InternalCoordinate(molorigin.geom().data(), origin.data_ptr<double>(), cartdim, intdim);
+    }
+    // Scale and symmetry
+    std::ifstream ifs; ifs.open(ScaleSymm_file);
+        std::string line;
+        std::vector<std::string> strs_vec;
+        std::forward_list<std::string> strs_flist;
+        // Internal coordinates who are scaled by themselves
+        std::getline(ifs, line);
+        while (true) {
+            std::getline(ifs, line);
+            if (! std::regex_match(line, std::regex("\\ *\\d+\\ *"))) break;
+            self_scaling.push_back(std::stoul(line)-1);
+        }
+        // Internal coordinates who are scaled by others
+        while (true) {
+            std::getline(ifs, line);
+            CL::utility::split(line, strs_vec);
+            if (! std::regex_match(strs_vec[0], std::regex("\\d+"))) break;
+            other_scaling.push_back(std::make_tuple(
+                std::stoul(strs_vec[0])-1, std::stoul(strs_vec[1])-1, std::stod(strs_vec[2])));
+        }
+        // Number of irreducible representations
+        std::getline(ifs, line);
+        NIrred = std::stoul(line);
+        // Product table
+        std::getline(ifs, line);
+        for (size_t i = 0; i < NIrred; i++) {
+            std::getline(ifs, line);
+            CL::utility::split(line, strs_vec);
+            std::vector<size_t> row(NIrred);
+            for (size_t j = 0; j < NIrred; j++) row[j] = std::stoul(strs_vec[j]) - 1;
+            product_table.push_back(row);
+        }
+        // Number of symmetry adapted coordinates per irreducible
+        std::getline(ifs, line);
+        std::getline(ifs, line);
+        CL::utility::split(line, strs_vec);
+        NSAIC_per_irred.resize(strs_vec.size());
+        for (size_t i = 0; i < NSAIC_per_irred.size(); i++) NSAIC_per_irred[i] = std::stoul(strs_vec[i]);
+        // Symmetry adapted linear combinations of each irreducible
+        symmetry_adaptation.resize(NIrred);
+        std::getline(ifs, line);
+        for (std::vector<SymmAdaptLinComb> & SALC_vec : symmetry_adaptation) {
+            int count = -1;
+            while (true) {
+                std::getline(ifs, line);
+                if (! ifs.good()) break;
+                CL::utility::split(line, strs_flist);
+                if (! std::regex_match(strs_flist.front(), std::regex("-?\\d+\\.?\\d*"))) break;
+                if (std::regex_match(strs_flist.front(), std::regex("\\d+"))) {
+                    count++;
+                    SALC_vec.push_back(SymmAdaptLinComb());
+                    strs_flist.pop_front();
+                }
+                SALC_vec[count].coeff.push_back(std::stod(strs_flist.front()));
+                strs_flist.pop_front();
+                SALC_vec[count].IntCoord.push_back(std::stoul(strs_flist.front())-1);
+            }
+            // Normalize linear combination coefficients
+            for (SymmAdaptLinComb & SALC : SALC_vec) {
+                double norm = CL::LA::norm2(SALC.coeff);
+                for (size_t k = 0; k < SALC.coeff.size(); k++)
+                SALC.coeff[k] /= norm;
+            }
+        }
+    ifs.close();
+}
 
-def compute_SSAIC(q) -> List:
-    SSAgeom = []
-    if isinstance(q, numpy.ndarray):
-        # Nondimensionalize
-        q -= origin
-        for i in range(q.shape[0]):
-            if IntCoordDef[i].motion[0].type == 'stretching':
-                q[i] /= origin[i]       
-        # Scale
-        for scaling in other_scaling:
-            q[scaling[0]] *= numpy.exp(-scaling[2] * q[scaling[1]])
-        for scaling in self_scaling:
-            q[scaling] = numpy.pi * scipy.special.erf(q[scaling])
-        # Symmetrize
-        temp = torch.as_tensor(q)
-        for SALC_list in symmetry_adaptation:
-            irred_geom = temp.new_zeros(len(SALC_list))
-            for i in range(irred_geom.size(0)):
-                SALC = SALC_list[i]
-                for j in range(len(SALC.coeff)):
-                    irred_geom[i] += SALC.coeff[j] * q[SALC.IntCoord[j]]
-            SSAgeom.append(irred_geom)
-    else:
-        # Nondimensionalize
-        work = q.clone()
-        work -= origin
-        for i in range(work.size(0)):
-            if IntCoordDef[i].motion[0].type == 'stretching':
-                work[i] /= origin[i]
-        # Scale
-        for scaling in other_scaling:
-            work[scaling[0]] *= numpy.exp(-scaling[2] * work[scaling[1]])
-        for scaling in self_scaling:
-            work[scaling] = numpy.pi * scipy.special.erf(work[scaling])
-        # Symmetrize
-        for SALC_list in symmetry_adaptation:
-            irred_geom = work.new_zeros(len(SALC_list))
-            for i in range(irred_geom.size(0)):
-                SALC = SALC_list[i]
-                for j in range(len(SALC.coeff)):
-                    irred_geom[i] += SALC.coeff[j] * work[SALC.IntCoord[j]]
-            SSAgeom.append(irred_geom)
-    return SSAgeom
+std::vector<at::Tensor> compute_SSAIC(const at::Tensor & q) {
+    // Nondimensionalize
+    at::Tensor work = q.clone();
+    work -= origin;
+    for (size_t i = 0; i < intdim; i++) {
+        if (IntCoordDef[i].motion[0].type == "stretching") work[i] /= origin[i];
+    }
+    // Scale
+    for (std::tuple<size_t, size_t, double> & scaling : other_scaling) work[std::get<0>(scaling)] *= exp(-std::get<2>(scaling) * work[std::get<1>(scaling)]);
+    for (size_t & scaling : self_scaling) work[scaling] = M_PI * erf(work[scaling]);
+    // Symmetrize
+    std::vector<at::Tensor> SSAgeom(NIrred);
+    for (size_t irred = 0; irred < NIrred; irred++) {
+        std::vector<SymmAdaptLinComb> * SALC_vec = & symmetry_adaptation[irred];
+        at::Tensor irred_geom = work.new_zeros(SALC_vec->size());
+        for (size_t i = 0; i < irred_geom.size(0); i++) {
+            SymmAdaptLinComb * SALC = & (*SALC_vec)[i];
+            for (size_t j = 0; j < SALC->coeff.size(); j++) irred_geom[i] += SALC->coeff[j] * work[SALC->IntCoord[j]];
+        }
+        SSAgeom[irred] = irred_geom;
+    }
+    return SSAgeom;
+}
+
+} // namespace SSAIC

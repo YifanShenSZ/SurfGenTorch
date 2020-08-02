@@ -39,6 +39,9 @@ build/
 .vscode/
 test-windows/
 
+# Back up
+BAK/
+
 # Test and back up
 test/
 BAK/

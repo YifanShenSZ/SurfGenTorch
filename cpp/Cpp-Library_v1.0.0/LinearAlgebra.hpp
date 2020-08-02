@@ -1,14 +1,18 @@
-// Vector & matrix & high order tensor operation for libtorch tensor
+// Vector & matrix & high order tensor operation
+// for std::vector and libtorch tensor
 
-#ifndef torch_LinearAlgebra_hpp
-#define torch_LinearAlgebra_hpp
+#ifndef LinearAlgebra_hpp
+#define LinearAlgebra_hpp
 
 #include <torch/torch.h>
 
-namespace torch_LinearAlgebra {
+namespace CL { namespace LA { // LinearAlgebra
+
+// 2-norm of vector x
+double norm2(const std::vector<double> & x);
 
 // 1-norm of the network parameter gradient
-float NetGradNorm(const std::vector<at::Tensor> & parameters);
+double NetGradNorm(const std::vector<at::Tensor> & parameters);
 
 // Matrix dot multiplication for 3rd-order tensor A and B
 // A.size(2) == B.size(2), A.size(1) == B.size(0)
@@ -24,6 +28,7 @@ at::Tensor UT_A3_U(const at::Tensor & A, const at::Tensor & U);
 void UT_A3_U(const at::Tensor & UT, at::Tensor & A, const at::Tensor & U);
 void UT_A3_U(at::Tensor & A, const at::Tensor & U);
 
-} // namespace torch_LinearAlgebra
+} // namespace LA
+} // namespace CL
 
 #endif

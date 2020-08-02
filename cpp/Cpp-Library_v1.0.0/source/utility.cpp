@@ -1,13 +1,14 @@
 // General basic routine
 
 #include <iostream>
-#include <sstream>
 #include <fstream>
+#include <sstream>
 #include <ctime>
 #include <vector>
+#include <forward_list>
 #include <iterator>
 
-namespace general {
+namespace CL { namespace utility {
 
 void ShowTime() {
     time_t now = time(0);
@@ -64,21 +65,26 @@ size_t NStrings(const std::string & file) {
     return n;
 }
 
-// Split text with some delimiter
-// White space delimiter
+// Split text with white space
 std::vector<std::string> split(const std::string & text) {
     std::istringstream iss(text);
     std::vector<std::string> result(std::istream_iterator<std::string>{iss}, std::istream_iterator<std::string>());
     return result;
 }
-// White space delimiter
 // text_split harvests the splitted string vector
 void split(const std::string & text, std::vector<std::string> & text_split) {
     std::istringstream iss(text);
     std::vector<std::string> result(std::istream_iterator<std::string>{iss}, std::istream_iterator<std::string>());
     text_split = result;
 }
-// Any single character delimiter
+// text_split harvests the splitted string forward list
+void split(const std::string & text, std::forward_list<std::string> & text_split) {
+    std::istringstream iss(text);
+    std::forward_list<std::string> result(std::istream_iterator<std::string>{iss}, std::istream_iterator<std::string>());
+    text_split = result;
+}
+
+// Split text with any single character
 std::vector<std::string> split(const std::string & text, const char & delimiter) {
     std::vector<std::string> text_split;
     size_t current, previous = 0;
@@ -91,7 +97,6 @@ std::vector<std::string> split(const std::string & text, const char & delimiter)
     text_split.push_back(text.substr(previous, current - previous));
     return text_split;
 }
-// Any single character delimiter
 // text_split harvests the splitted string vector
 void split(const std::string & text, std::vector<std::string> & text_split, const char & delimiter) {
     size_t current, previous = 0;
@@ -104,4 +109,5 @@ void split(const std::string & text, std::vector<std::string> & text_split, cons
     text_split.push_back(text.substr(previous, current - previous));
 }
 
-} // namespace general
+} // namespace utility
+} // namespace CL

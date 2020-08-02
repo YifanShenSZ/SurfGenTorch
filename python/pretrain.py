@@ -27,9 +27,9 @@ def RMSD(irred:int, net:DimRed.DimRedNet, data_set:List) -> torch.tensor:
     e = torch.sqrt(e)
     return e
 
-def pretrain(irred:int, max_depth:int, data_set_file:List[Path],
+def pretrain(irred:int, max_depth:int, data_set:List[Path],
 chk:Path=None, freeze=True,
-opt="SGD", epoch=1000) -> None:
+opt="Adam", epoch=1000) -> None:
     # contains
     def closure() -> torch.Tensor:
         optimizer.zero_grad()
@@ -56,7 +56,6 @@ opt="SGD", epoch=1000) -> None:
     net = DimRed.DimRedNet(irred, max_depth)
     net.to(torch.double)
 
-    data_set = utility.verify_data_set(data_set_file)
     GeomSet = AbInitio.read_GeomSet(data_set)
     print("Number of geometries = %d" % GeomSet.__len__())
     if opt == "LBFGS":

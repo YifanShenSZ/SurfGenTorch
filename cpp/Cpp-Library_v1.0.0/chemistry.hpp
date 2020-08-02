@@ -1,9 +1,9 @@
 #ifndef chemistry_hpp
 #define chemistry_hpp
 
-#include "general.hpp"
+#include "utility.hpp"
 
-namespace chemistry {
+namespace CL { namespace chemistry {
 
 template <class T> class xyz {
     protected:
@@ -57,7 +57,7 @@ template <class T> class xyz_mass : public xyz<T> {
         }
         // Construct from Columbus7 geom file
         xyz_mass(const std::string & geomfile, bool AtomicUnit = false) {
-            xyz<T>::NAtoms_ = general::NLines(geomfile);
+            xyz<T>::NAtoms_ = utility::NLines(geomfile);
             std::ifstream ifs; ifs.open(geomfile);
                 xyz<T>::symbol_.resize(NAtoms_);
                 xyz<T>::geom_.resize(3*NAtoms_);
@@ -73,7 +73,8 @@ template <class T> class xyz_mass : public xyz<T> {
             ifs.close();
             if (AtomicUnit) {
                 for(size_t i = 0; i < mass_.size(); i++) mass_[i] *= 1822.888486192;
-            } else {
+            }
+            else {
                 for(size_t i = 0; i < xyz<T>::geom_.size(); i++) xyz<T>::geom_[i] /= 1.8897261339212517;
             }
         }
@@ -95,5 +96,6 @@ const T0 & threshold, T1 * energy, const T2 & N) {
 }
 
 } // namespace chemistry
+} // namespace CL
 
 #endif

@@ -24,10 +24,11 @@ if __name__ == "__main__":
     print("Job type: " + args.job)
     print("File format: " + args.format)
     SSAIC.define_SSAIC(args.format, args.IntCoordDef, args.origin, args.scale_symmetry)
+    data_set = utility.verify_data_set(args.data_set)
 
     print()
     if args.job == 'pretrain':
-        pretrain.pretrain(args.irreducible, args.max_depth, args.data_set,
+        pretrain.pretrain(args.irreducible, args.max_depth, data_set,
             chk=args.checkpoint, freeze=args.freeze,
             opt=args.optimizer, epoch=args.epoch)
 

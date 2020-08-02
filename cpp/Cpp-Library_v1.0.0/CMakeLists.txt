@@ -11,8 +11,8 @@ set(CMAKE_PREFIX_PATH /home/yshen/Software/Programming/libtorch-cpu)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 add_library(CL
-    source/general.cpp
-    source/torch_LinearAlgebra.cpp
+    source/utility.cpp
+    source/LinearAlgebra.cpp
 )
 
 target_link_libraries(CL "${TORCH_LIBRARIES}")

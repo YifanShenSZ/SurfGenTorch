@@ -21,10 +21,13 @@ add_subdirectory(Cpp-Library_v1.0.0)
 
 include_directories(include)
 add_executable(SurfGenTorch.exe
-    source/main.cpp
-    source/DimRed.cpp
-    source/pretrain.cpp
     source/utility.cpp
+    source/SSAIC.cpp
+    source/AbInitio.cpp
+    source/net/pretrain.cpp
+    source/net/RMSD.cpp
+    source/net/DimRed.cpp
+    source/main.cpp
 )
 target_link_libraries(SurfGenTorch.exe "${TORCH_LIBRARIES}" FL CL)
 set_property(TARGET SurfGenTorch.exe PROPERTY CXX_STANDARD 14)
