@@ -1,19 +1,18 @@
 // Evaluate the root mean square deviation
 
 #include "../../include/SSAIC.hpp"
-#include "../../include/net.hpp"
+#include "../../include/pretrain.hpp"
 
 namespace DimRed {
-    double RMSD(const size_t & irred, const std::shared_ptr<Net> & net, const std::vector<AbInitio::geom*> & geom_set) {
+    double RMSD(const size_t & irred, const std::shared_ptr<Net> & net, const std::vector<AbInitio::geom*> & GeomSet) {
         double e = 0.0;
         torch::NoGradGuard no_grad;
-        for (auto & geom : geom_set) {
+        for (auto & geom : GeomSet) {
             e += torch::mse_loss(net->forward(geom->SAIgeom[irred]), geom->SAIgeom[irred],
                  at::Reduction::Sum).item<double>();
         }
-        e /= (double)geom_set.size();
-        e /= (double)std::accumulate(SSAIC::NSAIC_per_irred.begin(), SSAIC::NSAIC_per_irred.end(), 0);;
-        e = std::sqrt(e);
-        return e;
+        e /= (double)GeomSet.size();
+        e /= (double)SSAIC::NSAIC_per_irred[irred];
+        return std::sqrt(e);
     }
 } // namespace DimRed

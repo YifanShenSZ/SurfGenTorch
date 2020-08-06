@@ -13,6 +13,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 add_library(CL
     source/utility.cpp
     source/LinearAlgebra.cpp
+    source/torch.cpp
 )
 
 target_link_libraries(CL "${TORCH_LIBRARIES}")

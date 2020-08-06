@@ -23,7 +23,7 @@ def RMSD(irred:int, net:DimRed.DimRedNet, data_set:List) -> torch.tensor:
             data.SAIgeom[irred], net.forward(data.SAIgeom[irred]),
             reduction='sum')
     e /= len(data_set)
-    e /= sum(SSAIC.NSAIC_per_irred)
+    e /= SSAIC.NSAIC_per_irred[irred]
     e = torch.sqrt(e)
     return e
 

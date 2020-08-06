@@ -24,9 +24,10 @@ add_executable(SurfGenTorch.exe
     source/utility.cpp
     source/SSAIC.cpp
     source/AbInitio.cpp
-    source/net/pretrain.cpp
-    source/net/RMSD.cpp
     source/net/DimRed.cpp
+    source/net/RMSD.cpp
+    source/net/FLopt.cpp
+    source/net/pretrain.cpp
     source/main.cpp
 )
 target_link_libraries(SurfGenTorch.exe "${TORCH_LIBRARIES}" FL CL)

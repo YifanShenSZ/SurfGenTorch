@@ -1,11 +1,10 @@
 #include <iostream>
-#include <omp.h>
 #include <torch/torch.h>
 #include <FortranLibrary.hpp>
 #include "../Cpp-Library_v1.0.0/argparse.hpp"
 #include "../Cpp-Library_v1.0.0/utility.hpp"
 #include "../include/SSAIC.hpp"
-#include "../include/net.hpp"
+#include "../include/pretrain.hpp"
 
 argparse::ArgumentParser parse_args(const int & argc, const char ** & argv);
 std::vector<std::string> verify_data_set(const std::vector<std::string> & original_data_set);
@@ -17,7 +16,7 @@ int main(int argc, const char** argv) {
     argparse::ArgumentParser args = parse_args(argc, argv);
     CL::utility::ShowTime();
     std::cout << '\n';
-    
+
     srand((unsigned)time(NULL));
 
     std::string job = args.retrieve<std::string>("job");
@@ -30,16 +29,15 @@ int main(int argc, const char** argv) {
     std::string origin = args.retrieve<std::string>("origin");
     std::string scale_symmetry = args.retrieve<std::string>("scale_symmetry");
     SSAIC::define_SSAIC(format, IntCoordDef, origin, scale_symmetry);
-    
+
     std::vector<std::string> data_set = verify_data_set(args.retrieve<std::vector<std::string>>("data_set"));
 
-    std::string checkpoint;
-    if (args.gotArgument("checkpoint")) checkpoint = args.retrieve<std::string>("checkpoint");
-    else checkpoint = "null";
-    
+    std::vector<std::string> checkpoint;
+    if (args.gotArgument("checkpoint")) checkpoint = args.retrieve<std::vector<std::string>>("checkpoint");
+
     std::string optimizer;
     if (args.gotArgument("optimizer")) optimizer = args.retrieve<std::string>("optimizer");
-    else checkpoint = "TR";
+    else optimizer = "TR";
 
     size_t epoch;
     if (args.gotArgument("epoch")) epoch = args.retrieve<size_t>("epoch");
@@ -72,8 +70,8 @@ argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
     parser.add_argument("--data_set", '+', false, "data set list file or directory");
     
     // optional arguments
-    parser.add_argument("-c","--checkpoint", 1, true, "checkpoint to continue from");
-    parser.add_argument("-o","--optimizer", 1, true, "Adam, SGD, TR (default = TR)");
+    parser.add_argument("-c","--checkpoint", '+', true, "checkpoint to continue from");
+    parser.add_argument("-o","--optimizer", 1, true, "Adam, CG, TR (default = TR)");
     parser.add_argument("-e","--epoch", 1, true, "default = 1000");
     
     // pretrain only
