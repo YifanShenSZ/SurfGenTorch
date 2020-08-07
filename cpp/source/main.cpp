@@ -35,20 +35,20 @@ int main(int argc, const char** argv) {
     std::vector<std::string> checkpoint;
     if (args.gotArgument("checkpoint")) checkpoint = args.retrieve<std::vector<std::string>>("checkpoint");
 
-    std::string optimizer;
+    std::string optimizer = "TR";
     if (args.gotArgument("optimizer")) optimizer = args.retrieve<std::string>("optimizer");
-    else optimizer = "TR";
 
-    size_t epoch;
+    size_t epoch = 1000;
     if (args.gotArgument("epoch")) epoch = args.retrieve<size_t>("epoch");
-    else epoch = 1000;
 
 std::cout << '\n';
 if (job == "pretrain") {
     size_t irred = args.retrieve<size_t>("irreducible");
     size_t max_depth = args.retrieve<size_t>("max_depth");
+    size_t chk_depth = max_depth;
+    if (args.gotArgument("chk_depth")) chk_depth = args.retrieve<size_t>("chk_depth");
     DimRed::pretrain(irred, max_depth, data_set,
-        checkpoint, optimizer, epoch);
+        checkpoint, chk_depth, optimizer, epoch);
 }
 
     std::cout << '\n';
@@ -75,8 +75,9 @@ argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
     parser.add_argument("-e","--epoch", 1, true, "default = 1000");
     
     // pretrain only
-    parser.add_argument("-i","--irreducible", 1, true, "the irreducible to pretrain");
-    parser.add_argument("-m","--max_depth", 1, true, "max depth of the pretraining network (0 means unlimited, default = 0)");
+    parser.add_argument("--irreducible", 1, true, "the irreducible to pretrain");
+    parser.add_argument("--max_depth", 1, true, "max depth of the pretraining network");
+    parser.add_argument("--chk_depth", 1, true, "max depth of the checkpoint network");
     
     // train
     /// parser.add_argument("-z", "--zero_point", 1, true, "zero of potential energy, default = 0");
