@@ -1,17 +1,20 @@
 // Support for libtorch
 
-#ifndef torch_hpp
-#define torch_hpp
+#ifndef TorchSupport_hpp
+#define TorchSupport_hpp
 
 #include <torch/torch.h>
 
-namespace CL { namespace torch {
+namespace CL { namespace TS {
 
 // Number of trainable network parameters
 size_t NParameters(const std::vector<at::Tensor> & parameters);
 
 // 1-norm of the network parameter gradient
 double NetGradNorm(const std::vector<at::Tensor> & parameters);
+
+// Copy the data in A to B
+void copy(const at::Tensor & A, const at::Tensor & B);
 
 namespace LA {
     // Matrix dot multiplication for 3rd-order tensor A and B
@@ -29,7 +32,7 @@ namespace LA {
     void UT_A3_U(at::Tensor & A, const at::Tensor & U);
 } // namespace LA
 
-} // namespace torch
+} // namespace TS
 } // namespace CL
 
 #endif

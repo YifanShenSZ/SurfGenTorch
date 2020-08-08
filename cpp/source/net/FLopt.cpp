@@ -2,14 +2,12 @@
 To make use of Fortran-Library nonlinear optimizers:
     1. Map the network parameters to vector c
     2. Compute residue and Jacobian
-
-The parameters-c mapping is implemented by letting them share memory
 */
 
 #include <omp.h>
 
 #include <FortranLibrary.hpp>
-#include "../../Cpp-Library_v1.0.0/torch.hpp"
+#include "../../Cpp-Library_v1.0.0/TorchSupport.hpp"
 
 #include "../../include/SSAIC.hpp"
 #include "../../include/pretrain.hpp"
@@ -125,14 +123,14 @@ void initialize(const size_t & irred_, const std::shared_ptr<Net> & net_, const 
     OMP_NUM_THREADS = omp_get_max_threads();
 
     irred = irred_;
-    
+
     net.resize(OMP_NUM_THREADS);
     net[0] = net_;
     for (size_t i = 1; i < OMP_NUM_THREADS; i++) {
-        net[i] = std::make_shared<Net>(irred, net[0]->fc.size());
+        net[i] = std::make_shared<Net>(SSAIC::NSAIC_per_irred[irred], net[0]->fc.size());
         net[i]->to(torch::kFloat64);
     }
-    Nc = CL::torch::NParameters(net[0]->parameters());
+    Nc = CL::TS::NParameters(net[0]->parameters());
     c = new double[Nc];
     p2c(net[0]);
 

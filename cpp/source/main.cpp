@@ -16,40 +16,39 @@ int main(int argc, const char** argv) {
     argparse::ArgumentParser args = parse_args(argc, argv);
     CL::utility::ShowTime();
     std::cout << '\n';
-
     srand((unsigned)time(NULL));
-
+    // retrieve command line arguments and initialize
     std::string job = args.retrieve<std::string>("job");
     std::cout << "Job type: " + job << '\n';
-
     std::string format = args.retrieve<std::string>("format");
     std::cout << "File format: " + format + "\n";
-
     std::string IntCoordDef = args.retrieve<std::string>("IntCoordDef");
     std::string origin = args.retrieve<std::string>("origin");
     std::string scale_symmetry = args.retrieve<std::string>("scale_symmetry");
     SSAIC::define_SSAIC(format, IntCoordDef, origin, scale_symmetry);
-
     std::vector<std::string> data_set = verify_data_set(args.retrieve<std::vector<std::string>>("data_set"));
-
     std::vector<std::string> checkpoint;
     if (args.gotArgument("checkpoint")) checkpoint = args.retrieve<std::vector<std::string>>("checkpoint");
-
     std::string optimizer = "TR";
     if (args.gotArgument("optimizer")) optimizer = args.retrieve<std::string>("optimizer");
-
     size_t epoch = 1000;
     if (args.gotArgument("epoch")) epoch = args.retrieve<size_t>("epoch");
 
-std::cout << '\n';
-if (job == "pretrain") {
-    size_t irred = args.retrieve<size_t>("irreducible");
-    size_t max_depth = args.retrieve<size_t>("max_depth");
-    size_t chk_depth = max_depth;
-    if (args.gotArgument("chk_depth")) chk_depth = args.retrieve<size_t>("chk_depth");
-    DimRed::pretrain(irred, max_depth, data_set,
-        checkpoint, chk_depth, optimizer, epoch);
-}
+    std::cout << '\n';
+    if (job == "pretrain") {
+        // retrieve command line arguments
+        size_t irred = args.retrieve<size_t>("irreducible");
+        size_t max_depth = 0;
+        if (args.gotArgument("max_depth")) max_depth = args.retrieve<size_t>("max_depth");
+        size_t chk_depth = max_depth;
+        if (args.gotArgument("chk_depth")) chk_depth = args.retrieve<size_t>("chk_depth");
+        size_t freeze = chk_depth;
+        if (args.gotArgument("freeze")) freeze = args.retrieve<size_t>("freeze");
+        // run
+        DimRed::pretrain(irred, max_depth, data_set,
+            checkpoint, chk_depth, freeze,
+            optimizer, epoch);
+    }
 
     std::cout << '\n';
     CL::utility::ShowTime();
@@ -75,9 +74,10 @@ argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
     parser.add_argument("-e","--epoch", 1, true, "default = 1000");
     
     // pretrain only
-    parser.add_argument("--irreducible", 1, true, "the irreducible to pretrain");
+    parser.add_argument("-i","--irreducible", 1, true, "the irreducible to pretrain");
     parser.add_argument("--max_depth", 1, true, "max depth of the pretraining network");
     parser.add_argument("--chk_depth", 1, true, "max depth of the checkpoint network");
+    parser.add_argument("-f","--freeze", 1, true, "freeze leading layers");
     
     // train
     /// parser.add_argument("-z", "--zero_point", 1, true, "zero of potential energy, default = 0");

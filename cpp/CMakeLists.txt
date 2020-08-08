@@ -25,7 +25,6 @@ add_executable(SurfGenTorch.exe
     source/SSAIC.cpp
     source/AbInitio.cpp
     source/net/DimRed.cpp
-    source/net/RMSD.cpp
     source/net/FLopt.cpp
     source/net/pretrain.cpp
     source/main.cpp

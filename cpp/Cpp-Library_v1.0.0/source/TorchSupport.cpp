@@ -2,7 +2,7 @@
 
 #include <torch/torch.h>
 
-namespace CL { namespace torch {
+namespace CL { namespace TS {
 
 // Number of trainable network parameters
 size_t NParameters(const std::vector<at::Tensor> & parameters) {
@@ -16,6 +16,18 @@ double NetGradNorm(const std::vector<at::Tensor> & parameters) {
     double norm = 0.0;
     for (auto & p : parameters) norm += p.grad().norm(1).item<double>();
     return norm;
+}
+
+// Copy the data in A to B
+void copy(const at::Tensor & A, const at::Tensor & B) {
+    assert(("CL::TS::copy: A and B must have same size", A.numel() == B.numel()));
+    if (A.options().dtype() == torch::kFloat64) {
+        for (size_t i = 0; i < A.numel(); i++)
+        A.data_ptr<double>()[i] = B.data_ptr<double>()[i];
+    }
+    else {
+        std::cout << "CL::TS::copy does not support this data type\n";
+    }
 }
 
 namespace LA {
@@ -107,5 +119,5 @@ namespace LA {
     }
 } // namespace LA
 
-} // namespace torch
+} // namespace TS
 } // namespace CL
