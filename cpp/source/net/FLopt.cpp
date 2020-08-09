@@ -10,43 +10,41 @@ To make use of Fortran-Library nonlinear optimizers:
 #include "../../Cpp-Library_v1.0.0/TorchSupport.hpp"
 
 #include "../../include/SSAIC.hpp"
-#include "../../include/pretrain.hpp"
+#include "../../include/AbInitio.hpp"
+#include "../../include/net.hpp"
 
 namespace DimRed { namespace FLopt {
 
 size_t OMP_NUM_THREADS;
 
-// The irreducible to pretrain
-size_t irred;
-
-// The dimensionality reduction network
-std::vector<std::shared_ptr<Net>> net;
+// The dimensionality reduction network (each thread owns a copy)
+std::vector<std::shared_ptr<Net>> nets;
 // Number of trainable parameters (length of parameter vector c)
 int Nc;
 // parameter vector c
 double * c;
 
+// The irreducible to pretrain
+size_t irred;
+
 // data set
 std::vector<AbInitio::geom *> GeomSet;
-// Number of data
-size_t NData;
 // Number of least square equations
 int NEq;
 // divide data set for parallelism
 std::vector<size_t> chunk;
 
-// work variable
-// a fake optimizer to zero_grad
+// work variable: a fake optimizer to zero_grad
 std::vector<torch::optim::Adam *> optimizer;
-// residue, Jacobian (transpose), Hessian
-double * r, * JT, * H;
 
 // Push network parameters to c
 void p2c(const std::shared_ptr<Net> & net) {
     size_t count = 0;
-    for (auto & p : net->parameters()) {
+    for (auto & p : net->parameters())
+    if (p.requires_grad()) {
+        double * pp = p.data_ptr<double>();
         for (size_t i = 0; i < p.numel(); i++) {
-            c[count] = p.data_ptr<double>()[i];
+            c[count] = pp[i];
             count++;
         }
     }
@@ -55,9 +53,11 @@ void p2c(const std::shared_ptr<Net> & net) {
 void c2p(const std::shared_ptr<Net> & net) {
     torch::NoGradGuard no_grad;
     size_t count = 0;
-    for (auto & p : net->parameters()) {
+    for (auto & p : net->parameters())
+    if (p.requires_grad()) {
+        double * pp = p.data_ptr<double>();
         for (size_t i = 0; i < p.numel(); i++) {
-            p.data_ptr<double>()[i] = c[count];
+            pp[i] = c[count];
             count++;
         }
     }
@@ -68,50 +68,127 @@ void loss(double & l, const double * c, const int & Nc) {
     std::vector<at::Tensor> loss(OMP_NUM_THREADS);
     #pragma omp parallel for
     for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-        c2p(net[thread]);
+        c2p(nets[thread]);
         loss[thread] = torch::zeros(1, at::TensorOptions().dtype(torch::kFloat64));
         for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
             loss[thread] += torch::mse_loss(
-                net[thread]->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
+                nets[thread]->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
                 at::Reduction::Sum);
         }
     }
     l = 0.0;
     for (at::Tensor & piece : loss) l += piece.item<double>();
-    l /= 2.0;
+}
+void grad(double * g, const double * c, const int & Nc) {
+    std::vector<torch::Tensor> loss(OMP_NUM_THREADS);
+    #pragma omp parallel for
+    for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
+        c2p(nets[thread]);
+        loss[thread] = torch::zeros(1, at::TensorOptions().dtype(torch::kFloat64));
+        for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
+            loss[thread] += torch::mse_loss(
+                nets[thread]->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
+                at::Reduction::Sum);
+        }
+        optimizer[thread]->zero_grad();
+        loss[thread].backward();
+    }
+    // Push network gradients to g
+    size_t count = 0;
+    for (auto & p : nets[0]->parameters())
+    if (p.requires_grad()) {
+        double * pg = p.grad().data_ptr<double>();
+        for (size_t i = 0; i < p.grad().numel(); i++) {
+            g[count] = pg[i];
+            count++;
+        }
+    }
+    for (int thread = 1; thread < OMP_NUM_THREADS; thread++) {
+        size_t count = 0;
+        for (auto & p : nets[0]->parameters())
+        if (p.requires_grad()) {
+            double * pg = p.grad().data_ptr<double>();
+            for (size_t i = 0; i < p.grad().numel(); i++) {
+                g[count] += pg[i];
+                count++;
+            }
+        }
+    }
+}
+int loss_grad(double & l, double * g, const double * c, const int & Nc) {
+    std::vector<torch::Tensor> loss(OMP_NUM_THREADS);
+    #pragma omp parallel for
+    for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
+        c2p(nets[thread]);
+        loss[thread] = torch::zeros(1, at::TensorOptions().dtype(torch::kFloat64));
+        for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
+            loss[thread] += torch::mse_loss(
+                nets[thread]->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
+                at::Reduction::Sum);
+        }
+        optimizer[thread]->zero_grad();
+        loss[thread].backward();
+    }
+    l = 0.0;
+    for (at::Tensor & piece : loss) l += piece.item<double>();
+    // Push network gradients to g
+    size_t count = 0;
+    for (auto & p : nets[0]->parameters())
+    if (p.requires_grad()) {
+        double * pg = p.grad().data_ptr<double>();
+        for (size_t i = 0; i < p.grad().numel(); i++) {
+            g[count] = pg[i];
+            count++;
+        }
+    }
+    for (int thread = 1; thread < OMP_NUM_THREADS; thread++) {
+        size_t count = 0;
+        for (auto & p : nets[0]->parameters())
+        if (p.requires_grad()) {
+            double * pg = p.grad().data_ptr<double>();
+            for (size_t i = 0; i < p.grad().numel(); i++) {
+                g[count] += pg[i];
+                count++;
+            }
+        }
+    }
+    return 0;
 }
 
 void residue(double * r, const double * c, const int & NEq, const int & Nc) {
     torch::NoGradGuard no_grad;
     #pragma omp parallel for
     for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-        c2p(net[thread]);
+        c2p(nets[thread]);
         size_t count = (chunk[thread] - chunk[0]) * SSAIC::NSAIC_per_irred[irred];
         for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
-            torch::Tensor r_tensor = net[thread]->forward(GeomSet[data]->SAIgeom[irred]) - GeomSet[data]->SAIgeom[irred];
+            torch::Tensor r_tensor = nets[thread]->forward(GeomSet[data]->SAIgeom[irred]) - GeomSet[data]->SAIgeom[irred];
+            double * pr = r_tensor.data_ptr<double>();
             for (size_t i = 0; i < r_tensor.numel(); i++) {
-                r[count] = r_tensor.data_ptr<double>()[i];
+                r[count] = pr[i];
                 count++;
             }
         }
     }
 }
-
 void Jacobian(double * JT, const double * c, const int & NEq, const int & Nc) {
     #pragma omp parallel for
     for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-        c2p(net[thread]);
+        c2p(nets[thread]);
         size_t column = (chunk[thread] - chunk[0]) * SSAIC::NSAIC_per_irred[irred];
         for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
-            torch::Tensor r_tensor = net[thread]->forward(GeomSet[data]->SAIgeom[irred]);
-            for (size_t j = 0; j < r_tensor.size(0); j++) {
+            torch::Tensor r_tensor = nets[thread]->forward(GeomSet[data]->SAIgeom[irred]);
+            for (size_t el = 0; el < r_tensor.size(0); el++) {
                 optimizer[thread]->zero_grad();
-                r_tensor[j].backward({}, true);
+                r_tensor[el].backward({}, true);
                 size_t row = 0;
-                for (auto & p : net[thread]->parameters())
-                for (size_t i = 0; i < p.numel(); i++) {
-                    JT[row*NEq+column] = p.grad().data_ptr<double>()[i];
-                    row++;
+                for (auto & p : nets[thread]->parameters())
+                if (p.requires_grad()) {
+                    double * pg = p.grad().data_ptr<double>();
+                    for (size_t i = 0; i < p.grad().numel(); i++) {
+                        JT[row*NEq+column] = pg[i];
+                        row++;
+                    }
                 }
                 column++;
             }
@@ -119,45 +196,45 @@ void Jacobian(double * JT, const double * c, const int & NEq, const int & Nc) {
     }
 }
 
-void initialize(const size_t & irred_, const std::shared_ptr<Net> & net_, const std::vector<AbInitio::geom *> & GeomSet_) {
+void initialize(const std::shared_ptr<Net> & net_,
+const size_t & irred_, const size_t & freeze_,
+const std::vector<AbInitio::geom *> & GeomSet_) {
     OMP_NUM_THREADS = omp_get_max_threads();
 
     irred = irred_;
 
-    net.resize(OMP_NUM_THREADS);
-    net[0] = net_;
+    nets.resize(OMP_NUM_THREADS);
+    nets[0] = net_;
     for (size_t i = 1; i < OMP_NUM_THREADS; i++) {
-        net[i] = std::make_shared<Net>(SSAIC::NSAIC_per_irred[irred], net[0]->fc.size());
-        net[i]->to(torch::kFloat64);
+        nets[i] = std::make_shared<Net>(SSAIC::NSAIC_per_irred[irred], nets[0]->fc.size());
+        nets[i]->to(torch::kFloat64);
+        nets[i]->copy(nets[0]);
+        nets[i]->freeze(freeze_);
     }
-    Nc = CL::TS::NParameters(net[0]->parameters());
+    Nc = CL::TS::NParameters(nets[0]->parameters());
     c = new double[Nc];
-    p2c(net[0]);
+    p2c(nets[0]);
 
     GeomSet = GeomSet_;
-    NData = OMP_NUM_THREADS * (GeomSet.size() / OMP_NUM_THREADS);
-    std::cout << "For parallelism, the number of geometries in use is " << NData << '\n';
+    size_t NData = OMP_NUM_THREADS * (GeomSet.size() / OMP_NUM_THREADS);
+    std::cout << "For parallelism, the number of data in use = " << NData << '\n';
     NEq = SSAIC::NSAIC_per_irred[irred] * NData;
     chunk.resize(OMP_NUM_THREADS);
     chunk[0] = GeomSet.size() / OMP_NUM_THREADS;
     for (size_t i = 1; i < OMP_NUM_THREADS; i++) chunk[i] = chunk[i-1] + chunk[0];
-    
+
     optimizer.resize(OMP_NUM_THREADS);
     for (size_t i = 0; i < OMP_NUM_THREADS; i++)
-    optimizer[i] = new torch::optim::Adam(net[i]->parameters(), 0.01);
+    optimizer[i] = new torch::optim::Adam(nets[i]->parameters(), 0.01);
 }
 
-void optimize(const std::string & opt) {
+void optimize(const std::string & opt, const size_t & epoch) {
     if (opt == "CG") {
-        std::cout << "Not implemented\n";
+        FL::NO::ConjugateGradient(loss, grad, loss_grad, c, Nc, "DY", false, true, epoch);
     } else {
-        r  = new double[NEq     ];
-        JT = new double[NEq * Nc];
-        FL::NO::TrustRegion(residue, Jacobian, c, NEq, Nc);
-        delete [] r;
-        delete [] JT;
+        FL::NO::TrustRegion(residue, Jacobian, c, NEq, Nc, true, epoch);
     }
-    c2p(net[0]);
+    c2p(nets[0]);
     delete [] c;
 }
 

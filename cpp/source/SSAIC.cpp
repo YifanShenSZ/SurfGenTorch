@@ -109,7 +109,7 @@ void define_SSAIC(const std::string & format, const std::string & IntCoordDef_fi
         // Symmetry adapted linear combinations of each irreducible
         symmetry_adaptation.resize(NIrred);
         std::getline(ifs, line);
-        for (std::vector<SymmAdaptLinComb> & SALC_vec : symmetry_adaptation) {
+        for (std::vector<SymmAdaptLinComb> & SALCs : symmetry_adaptation) {
             int count = -1;
             while (true) {
                 std::getline(ifs, line);
@@ -118,15 +118,15 @@ void define_SSAIC(const std::string & format, const std::string & IntCoordDef_fi
                 if (! std::regex_match(strs_flist.front(), std::regex("-?\\d+\\.?\\d*"))) break;
                 if (std::regex_match(strs_flist.front(), std::regex("\\d+"))) {
                     count++;
-                    SALC_vec.push_back(SymmAdaptLinComb());
+                    SALCs.push_back(SymmAdaptLinComb());
                     strs_flist.pop_front();
                 }
-                SALC_vec[count].coeff.push_back(std::stod(strs_flist.front()));
+                SALCs[count].coeff.push_back(std::stod(strs_flist.front()));
                 strs_flist.pop_front();
-                SALC_vec[count].IntCoord.push_back(std::stoul(strs_flist.front())-1);
+                SALCs[count].IntCoord.push_back(std::stoul(strs_flist.front())-1);
             }
             // Normalize linear combination coefficients
-            for (SymmAdaptLinComb & SALC : SALC_vec) {
+            for (SymmAdaptLinComb & SALC : SALCs) {
                 double norm = CL::LA::norm2(SALC.coeff);
                 for (size_t k = 0; k < SALC.coeff.size(); k++)
                 SALC.coeff[k] /= norm;
@@ -148,10 +148,10 @@ std::vector<at::Tensor> compute_SSAIC(const at::Tensor & q) {
     // Symmetrize
     std::vector<at::Tensor> SSAgeom(NIrred);
     for (size_t irred = 0; irred < NIrred; irred++) {
-        std::vector<SymmAdaptLinComb> * SALC_vec = & symmetry_adaptation[irred];
-        at::Tensor irred_geom = work.new_zeros(SALC_vec->size());
+        std::vector<SymmAdaptLinComb> * SALCs = & symmetry_adaptation[irred];
+        at::Tensor irred_geom = work.new_zeros(SALCs->size());
         for (size_t i = 0; i < irred_geom.size(0); i++) {
-            SymmAdaptLinComb * SALC = & (*SALC_vec)[i];
+            SymmAdaptLinComb * SALC = & (*SALCs)[i];
             for (size_t j = 0; j < SALC->coeff.size(); j++) irred_geom[i] += SALC->coeff[j] * work[SALC->IntCoord[j]];
         }
         SSAgeom[irred] = irred_geom;

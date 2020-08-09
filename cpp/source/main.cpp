@@ -1,8 +1,10 @@
 #include <iostream>
 #include <torch/torch.h>
+
 #include <FortranLibrary.hpp>
 #include "../Cpp-Library_v1.0.0/argparse.hpp"
 #include "../Cpp-Library_v1.0.0/utility.hpp"
+
 #include "../include/SSAIC.hpp"
 #include "../include/pretrain.hpp"
 
@@ -38,15 +40,16 @@ int main(int argc, const char** argv) {
     if (job == "pretrain") {
         // retrieve command line arguments
         size_t irred = args.retrieve<size_t>("irreducible");
-        size_t max_depth = 0;
+        size_t max_depth = 0; // 0 means unlimited
         if (args.gotArgument("max_depth")) max_depth = args.retrieve<size_t>("max_depth");
         size_t chk_depth = max_depth;
         if (args.gotArgument("chk_depth")) chk_depth = args.retrieve<size_t>("chk_depth");
-        size_t freeze = chk_depth;
+        size_t freeze = (chk_depth < max_depth || max_depth == 0) ? chk_depth : 0;
         if (args.gotArgument("freeze")) freeze = args.retrieve<size_t>("freeze");
         // run
-        DimRed::pretrain(irred, max_depth, data_set,
-            checkpoint, chk_depth, freeze,
+        DimRed::pretrain(irred, max_depth, freeze,
+            data_set,
+            checkpoint, chk_depth,
             optimizer, epoch);
     }
 
@@ -67,18 +70,18 @@ argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
     parser.add_argument("--origin", 1, false, "internal coordinate origin file");
     parser.add_argument("--scale_symmetry", 1, false, "scale and symmetry definition file");
     parser.add_argument("--data_set", '+', false, "data set list file or directory");
-    
+
     // optional arguments
     parser.add_argument("-c","--checkpoint", '+', true, "checkpoint to continue from");
     parser.add_argument("-o","--optimizer", 1, true, "Adam, CG, TR (default = TR)");
     parser.add_argument("-e","--epoch", 1, true, "default = 1000");
-    
+
     // pretrain only
     parser.add_argument("-i","--irreducible", 1, true, "the irreducible to pretrain");
-    parser.add_argument("--max_depth", 1, true, "max depth of the pretraining network");
-    parser.add_argument("--chk_depth", 1, true, "max depth of the checkpoint network");
-    parser.add_argument("-f","--freeze", 1, true, "freeze leading layers");
-    
+    parser.add_argument("--max_depth", 1, true, "max depth of the pretraining network, default = unlimited");
+    parser.add_argument("--chk_depth", 1, true, "max depth of the checkpoint network, default = max_depth");
+    parser.add_argument("-f","--freeze", 1, true, "freeze leading layers, default = chk_depth < max_depth ? chk_depth : 0");
+
     // train
     /// parser.add_argument("-z", "--zero_point", 1, true, "zero of potential energy, default = 0");
     /// parser.add_argument("-n", "--NStates", 1, true, "number of electronic states");

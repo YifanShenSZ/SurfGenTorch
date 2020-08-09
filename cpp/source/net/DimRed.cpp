@@ -38,36 +38,41 @@ Net::Net(const size_t & init_dim, const size_t & max_depth) {
 torch::Tensor Net::forward(const at::Tensor & x) {
     torch::Tensor y = x.clone();
     // Reduce dimensionality
-    for (auto & layer : this->fc) {
+    for (auto & layer : fc) {
         y = (*layer)->forward(y);
         y = torch::tanh(y);
     }
     // Inverse the reduction
-    for (auto layer = this->fc_inv.rbegin();
-        layer != this->fc_inv.rend(); ++layer) {
+    for (auto layer = fc_inv.rbegin();
+        layer != fc_inv.rend(); ++layer) {
         y = torch::tanh(y);
         y = (**layer)->forward(y);
     }
     return y;
 }
 
+void Net::copy(const std::shared_ptr<Net> & net) {
+    torch::NoGradGuard no_grad;
+    for (size_t i = 0; i < (fc.size() < net->fc.size() ? fc.size() : net->fc.size()); i++) {
+        CL::TS::copy((*(net->fc    [i]))->weight, (*fc    [i])->weight);
+        CL::TS::copy((*(net->fc_inv[i]))->weight, (*fc_inv[i])->weight);
+    }
+}
+
 void Net::warmstart(const std::string & chk, const size_t & chk_depth) {
-    //size_t init_dim = (*fc[0])->options.in_features();
-    //auto warm_net = std::make_shared<Net>(init_dim, chk_depth_);
     auto warm_net = std::make_shared<Net>((*fc[0])->options.in_features(), chk_depth);
     warm_net->to(torch::kFloat64);
     torch::load(warm_net, chk);
-    torch::NoGradGuard no_grad;
-    for (size_t i = 0; i < (fc.size() < warm_net->fc.size() ? fc.size() : warm_net->fc.size()); i++) {
-        CL::TS::copy((*fc    [i])->weight, (*(warm_net->fc    [i]))->weight);
-        CL::TS::copy((*fc_inv[i])->weight, (*(warm_net->fc_inv[i]))->weight);
-    }
+    this->copy(warm_net);
     warm_net.reset();
 }
 
-// 
 void Net::freeze(const size_t & freeze) {
-    
+    assert(("All layers are frozen, so nothing to train", freeze < fc.size()));
+    for (size_t i = 0; i < freeze; i++) {
+        (*fc    [i])->weight.set_requires_grad(false);
+        (*fc_inv[i])->weight.set_requires_grad(false);
+    }
 }
 
 } // namespace DimRed

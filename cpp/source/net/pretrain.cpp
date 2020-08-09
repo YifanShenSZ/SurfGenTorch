@@ -1,5 +1,7 @@
 #include <torch/torch.h>
 
+#include "../../Cpp-Library_v1.0.0/TorchSupport.hpp"
+
 #include "../../include/SSAIC.hpp"
 #include "../../include/pretrain.hpp"
 
@@ -17,23 +19,23 @@ double RMSD(const size_t & irred, const std::shared_ptr<Net> & net, const std::v
     return std::sqrt(e);
 }
 
-void pretrain(const size_t & irred, const size_t & max_depth,
+void pretrain(const size_t & irred, const size_t & max_depth, const size_t & freeze,
 const std::vector<std::string> & data_set,
-const std::vector<std::string> & chk, const size_t & chk_depth, const size_t & freeze,
+const std::vector<std::string> & chk, const size_t & chk_depth,
 const std::string & opt, const size_t & epoch) {
     std::cout << "Start pretraining\n";
     auto net = std::make_shared<Net>(SSAIC::NSAIC_per_irred[irred], max_depth);
     net->to(torch::kFloat64);
+    if (! chk.empty()) net->warmstart(chk[0], chk_depth);
+    net->freeze(freeze);
+    std::cout << "Number of trainable parameters = " << CL::TS::NParameters(net->parameters()) << '\n';
     auto * GeomSet = AbInitio::read_GeomSet(data_set);
     std::cout << "Number of geometries = " << GeomSet->size_int() << '\n';
     if (opt == "Adam") {
         auto geom_loader = torch::data::make_data_loader(* GeomSet, 1);
         std::cout << "batch size = " << geom_loader->options().batch_size << '\n';
         torch::optim::Adam optimizer(net->parameters(), 0.01);
-        if (! chk.empty()) {
-            net->warmstart(chk[0], chk_depth);
-            if (chk.size() > 1) torch::load(optimizer, chk[1]);
-        }
+        if (chk.size() > 1) torch::load(optimizer, chk[1]);
         size_t follow = epoch / 10;
         for (size_t iepoch = 0; iepoch < epoch; iepoch++) {
             for (auto & batch : * geom_loader) {
@@ -56,13 +58,11 @@ const std::string & opt, const size_t & epoch) {
         }
     }
     else {
-        if (! chk.empty()) net->warmstart(chk[0], chk_depth);;
-        FLopt::initialize(irred, net, GeomSet->example());
-        FLopt::optimize(opt);
+        FLopt::initialize(net, irred, freeze, GeomSet->example());
+        FLopt::optimize(opt, epoch);
         std::cout << "RMSD = " << RMSD(irred, net, GeomSet->example()) << '\n';
         torch::save(net, "pretrain_net.pt");
     }
-    
 }
 
 } // namespace DimRed

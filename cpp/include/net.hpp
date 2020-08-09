@@ -25,6 +25,7 @@ struct Net : torch::nn::Module {
 
     // For pretraining
     torch::Tensor forward(const at::Tensor & x);
+    void copy(const std::shared_ptr<Net> & net);
     void warmstart(const std::string & chk, const size_t & chk_depth_);
     void freeze(const size_t & freeze);
 };
