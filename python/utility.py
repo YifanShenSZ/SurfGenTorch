@@ -1,7 +1,6 @@
 import argparse
 from pathlib import Path
 from typing import List
-
 import numpy
 
 import PythonLibrary.utility as PLut
@@ -16,13 +15,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('origin', type=Path, help='internal coordinate origin file')
     parser.add_argument('scale_symmetry', type=Path, help='scale and symmetry definition file')
     parser.add_argument('data_set', type=Path, nargs='+', help='data set list file or directory')
-    parser.add_argument('-c','--checkpoint', type=Path, help="checkpoint file to continue from")
+    parser.add_argument('-c','--checkpoint', type=Path, nargs='+', help="checkpoint file to continue from")
     parser.add_argument('-o','--optimizer', type=str, default='Adam', help='Adam, SGD, LBFGS (default = Adam)')
     parser.add_argument('-e','--epoch', type=int, default=1000, help='default = 1000')
     # pretrain only
     parser.add_argument('-i','--irreducible', type=int, help='the irreducible to pretrain')
-    parser.add_argument('-m','--max_depth', type=int, default=0, help='max depth of the pretraining network (0 means unlimited, default = 0)')
-    parser.add_argument('-f','--freeze', action="store_true", help='freeze the layers inherited from checkpoint')
+    parser.add_argument('-m','--max_depth', type=int, default=0, help='max depth of the pretraining network (default = unlimited)')
+    parser.add_argument('-f','--freeze', type=int, default=0, help='freeze leading layers (default = 0)')
     args = parser.parse_args()
     return args
 

@@ -13,11 +13,9 @@ The procedure of this module:
     4. Symmetry adapted linear combinate the scaled dimensionless internal coordinates
 '''
 
-import logging
 from pathlib import Path
 from typing import List
 import re
-
 import numpy
 import numpy.linalg
 import scipy.special
@@ -25,10 +23,6 @@ import torch
 
 import FortranLibrary as FL
 import PythonLibrary.io as PLio
-
-logger = logging.getLogger(Path(__file__).stem)
-logging.basicConfig()
-logger.setLevel("DEBUG")
 
 # Symmetry adapted linear combination
 class SymmAdaptLinComb:
@@ -63,7 +57,7 @@ def define_SSAIC(format:str, IntCoordDef_file:Path, origin_file:Path, ScaleSymm_
     global intdim, IntCoordDef, cartdim, origin, self_scaling, other_scaling, NIrred, product_table, NSAIC_per_irred, symmetry_adaptation
     intdim, IntCoordDef = FL.FetchInternalCoordinateDefinition(format, file=IntCoordDef_file)
     FL.DefineInternalCoordinate(format, file=IntCoordDef_file)
-    logger.info("Number of internal coordinates: %d", intdim)
+    print("Number of internal coordinates: %d" % intdim)
     # Origin
     if format == 'Columbus7':
         NAtoms, _, _, r, _ = PLio.read_geom_Columbus7(origin_file)

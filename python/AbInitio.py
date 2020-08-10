@@ -12,7 +12,6 @@ In addition, geometries can be extracted alone to feed pretraining
 
 from pathlib import Path
 from typing import List
-
 import numpy
 import torch
 

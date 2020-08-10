@@ -21,8 +21,8 @@ std::vector<std::string> verify_data_set(const std::vector<std::string> & origin
         }
     }
     // output to job log
-    std::cout << "The training set will be read from: ";
-    size_t line_length = 36;
+    std::cout << "The training set will be read from: \n    ";
+    size_t line_length = 4;
     for (size_t i = 0; i < data_set.size()-1; i++) {
         line_length += data_set[i].size() + 2;
         if (line_length > 75) {

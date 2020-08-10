@@ -1,7 +1,5 @@
-import logging
 from pathlib import Path
 from typing import List
-
 import torch
 import torch.nn.functional
 import torch.optim
@@ -11,24 +9,21 @@ import SSAIC
 import AbInitio
 import DimRed
 
-logger = logging.getLogger(Path(__file__).stem)
-logging.basicConfig()
-logger.setLevel("DEBUG")
-
 @torch.no_grad()
-def RMSD(irred:int, net:DimRed.DimRedNet, data_set:List) -> torch.tensor:
+def RMSD(irred:int, net:DimRed.DimRedNet, GeomSet:List) -> torch.tensor:
     e = 0
-    for data in data_set:
+    for geom in GeomSet:
         e += torch.nn.functional.mse_loss(
-            data.SAIgeom[irred], net.forward(data.SAIgeom[irred]),
+            net.forward(geom.SAIgeom[irred]), geom.SAIgeom[irred],
             reduction='sum')
-    e /= len(data_set)
+    e /= len(GeomSet)
     e /= SSAIC.NSAIC_per_irred[irred]
     e = torch.sqrt(e)
     return e
 
-def pretrain(irred:int, max_depth:int, data_set:List[Path],
-chk:Path=None, freeze=True,
+def pretrain(irred:int, max_depth:int, freeze:int,
+data_set:List[Path],
+chk:List[Path]=None,
 opt="Adam", epoch=1000) -> None:
     # contains
     def closure() -> torch.Tensor:
@@ -53,8 +48,14 @@ opt="Adam", epoch=1000) -> None:
 
     print("Start pretraining")
 
-    net = DimRed.DimRedNet(irred, max_depth)
+    net = DimRed.DimRedNet(SSAIC.NSAIC_per_irred[irred], max_depth)
     net.to(torch.double)
+    if chk != None:
+        net_chk = torch.load(chk[0])
+        net.load_state_dict(net_chk, strict=False)
+        net.train()
+    net.freeze(freeze)
+    print("Number of trainable parameters = %d" % sum(p.numel() for p in net.parameters() if p.requires_grad))
 
     GeomSet = AbInitio.read_GeomSet(data_set)
     print("Number of geometries = %d" % GeomSet.__len__())
@@ -66,35 +67,19 @@ opt="Adam", epoch=1000) -> None:
         geom_loader = torch.utils.data.DataLoader(GeomSet,
         shuffle=True,
         collate_fn=AbInitio.collate)
-    logger.info("batch size = %d", geom_loader.batch_size)
+    print("batch size = %d" % geom_loader.batch_size)
 
     follow = int(epoch / 10)
     optimizer = generate_optimizer()
     if chk != None:
-        print("Continue from checkpoint")
-        checkpoint = torch.load(chk)
-        net.load_state_dict(checkpoint["net"], strict=False)
-        net.train()
-        if len(net.state_dict()) > len(checkpoint["net"]) and freeze:
-            print("Warm start a deeper net: Freeze inherited layers")
-            for key in checkpoint["net"]:
-                strs = key.split('.')
-                if strs[0] == 'fc':
-                    net.fc[int(strs[1])].weight.requires_grad = False
-                else:
-                    net.fc_inv[int(strs[1])].weight.requires_grad = False
-        elif len(net.state_dict()) == len(checkpoint["net"]):
-            print("Continue with the same net: Inherit optimizer")
-            if (opt == "Adam"  and "betas"          in checkpoint["opt"]['param_groups'][0]) \
-            or (opt == "SGD"   and "nesterov"       in checkpoint["opt"]['param_groups'][0]) \
-            or (opt == "LBFGS" and "tolerance_grad" in checkpoint["opt"]['param_groups'][0]):
-                optimizer.load_state_dict(checkpoint["opt"])
-    print("Number of trainable parameters = %d" % sum(p.numel() for p in net.parameters() if p.requires_grad))
-    print("Training...")
+        if len(chk) > 1:
+            opt_chk = torch.load(chk[1])
+            optimizer.load_state_dict(opt_chk)
+
     for iepoch in range(epoch):
         for batch in geom_loader:
             optimizer.step(closure=closure)
         if iepoch % follow == follow - 1:
             print("epoch = %d, RMSD = %e" % (iepoch+1, RMSD(irred, net, GeomSet.example)))
-            torch.save({"net":net.state_dict(), "opt":optimizer.state_dict()},
-                "pretrain_irred-"+str(irred)+"_depth-"+str(max_depth)+"_epoch-"+str(iepoch+1)+".pt")
+            torch.save(net.state_dict(), "pretrain_net_"+str(iepoch+1)+".pt")
+            torch.save(optimizer.state_dict(), "pretrain_opt_"+str(iepoch+1)+".pt")

@@ -34,7 +34,7 @@ const std::string & opt, const size_t & epoch) {
     if (opt == "Adam") {
         auto geom_loader = torch::data::make_data_loader(* GeomSet, 1);
         std::cout << "batch size = " << geom_loader->options().batch_size << '\n';
-        torch::optim::Adam optimizer(net->parameters(), 0.01);
+        torch::optim::Adam optimizer(net->parameters(), 0.001);
         if (chk.size() > 1) torch::load(optimizer, chk[1]);
         size_t follow = epoch / 10;
         for (size_t iepoch = 0; iepoch < epoch; iepoch++) {
