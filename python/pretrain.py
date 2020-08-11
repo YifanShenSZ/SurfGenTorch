@@ -65,6 +65,7 @@ opt="Adam", epoch=1000) -> None:
         collate_fn=AbInitio.collate)
     else:
         geom_loader = torch.utils.data.DataLoader(GeomSet,
+        batch_size=8,
         shuffle=True,
         collate_fn=AbInitio.collate)
     print("batch size = %d" % geom_loader.batch_size)

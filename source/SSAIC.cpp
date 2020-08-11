@@ -17,11 +17,11 @@ The procedure of this module:
 #include <torch/torch.h>
 
 #include <FortranLibrary.hpp>
-#include "../Cpp-Library_v1.0.0/utility.hpp"
-#include "../Cpp-Library_v1.0.0/LinearAlgebra.hpp"
-#include "../Cpp-Library_v1.0.0/chemistry.hpp"
+#include <CppLibrary/utility.hpp>
+#include <CppLibrary/LinearAlgebra.hpp>
+#include <CppLibrary/chemistry.hpp>
 
-#include "../include/SSAIC.hpp"
+#include "SSAIC.hpp"
 
 namespace SSAIC {
 

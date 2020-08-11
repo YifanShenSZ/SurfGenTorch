@@ -2,10 +2,10 @@
 
 #include <torch/torch.h>
 
-#include "../../Cpp-Library_v1.0.0/TorchSupport.hpp"
+#include <CppLibrary/TorchSupport.hpp>
 
-#include "../../include/SSAIC.hpp"
-#include "../../include/net.hpp"
+#include "SSAIC.hpp"
+#include "net.hpp"
 
 namespace DimRed {
 

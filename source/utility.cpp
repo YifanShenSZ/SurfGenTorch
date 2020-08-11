@@ -1,4 +1,4 @@
-#include "../Cpp-Library_v1.0.0/utility.hpp"
+#include <CppLibrary/utility.hpp>
 
 // Check if user inputs are directories (end with /)
 // otherwise consider as lists, then read the lists for directories

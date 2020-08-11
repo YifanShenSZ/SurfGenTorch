@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "~/Software/Programming/libtorch-cpu/include/**",
+                "Cpp-Library_v1.0.0",
+                "include"
+            ],
+            "cppStandard": "c++14"
+        }
+    ],
+    "version": 4
+}

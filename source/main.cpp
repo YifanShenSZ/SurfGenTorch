@@ -2,14 +2,20 @@
 #include <torch/torch.h>
 
 #include <FortranLibrary.hpp>
-#include "../Cpp-Library_v1.0.0/argparse.hpp"
-#include "../Cpp-Library_v1.0.0/utility.hpp"
+#include <CppLibrary/argparse.hpp>
+#include <CppLibrary/utility.hpp>
 
-#include "../include/SSAIC.hpp"
-#include "../include/pretrain.hpp"
+#include "SSAIC.hpp"
 
 argparse::ArgumentParser parse_args(const int & argc, const char ** & argv);
 std::vector<std::string> verify_data_set(const std::vector<std::string> & original_data_set);
+namespace DimRed {
+    void pretrain(const size_t & irred, const size_t & max_depth, const size_t & freeze,
+        const std::vector<std::string> & data_set,
+        const std::vector<std::string> & chk, const size_t & chk_depth,
+        const std::string & opt = "TR", const size_t & epoch = 1000,
+        const size_t & batch_size = 32, const double & learning_rate = 0.001);
+} // namespace DimRed
 
 int main(int argc, const char** argv) {
     // welcome
@@ -35,6 +41,10 @@ int main(int argc, const char** argv) {
     if (args.gotArgument("optimizer")) optimizer = args.retrieve<std::string>("optimizer");
     size_t epoch = 1000;
     if (args.gotArgument("epoch")) epoch = args.retrieve<size_t>("epoch");
+    size_t batch_size = 32;
+    if (args.gotArgument("batch_size")) batch_size = args.retrieve<size_t>("batch_size");
+    double learning_rate = 0.001;
+    if (args.gotArgument("learning_rate")) learning_rate = args.retrieve<double>("learning_rate");
 
     std::cout << '\n';
     if (job == "pretrain") {
@@ -50,7 +60,8 @@ int main(int argc, const char** argv) {
         DimRed::pretrain(irred, max_depth, freeze,
             data_set,
             checkpoint, chk_depth,
-            optimizer, epoch);
+            optimizer, epoch,
+            batch_size, learning_rate);
     }
 
     std::cout << '\n';
@@ -73,14 +84,16 @@ argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
 
     // optional arguments
     parser.add_argument("-c","--checkpoint", '+', true, "checkpoint to continue from");
-    parser.add_argument("-o","--optimizer", 1, true, "Adam, CG, TR (default = TR)");
+    parser.add_argument("-o","--optimizer", 1, true, "Adam, SGD, CG, TR (default = TR)");
     parser.add_argument("-e","--epoch", 1, true, "default = 1000");
+    parser.add_argument("-b","--batch_size", 1, true, "batch size for Adam & SGD (default = 32)");
+    parser.add_argument("-l","--learning_rate", 1, true, "learning rate for Adam & SGD (default = 0.001)");
 
     // pretrain only
     parser.add_argument("-i","--irreducible", 1, true, "the irreducible to pretrain");
     parser.add_argument("--max_depth", 1, true, "max depth of the pretraining network, default = unlimited");
-    parser.add_argument("--chk_depth", 1, true, "max depth of the checkpoint network, default = max_depth");
-    parser.add_argument("-f","--freeze", 1, true, "freeze leading layers, default = chk_depth < max_depth ? chk_depth : 0");
+    parser.add_argument("--chk_depth", 1, true, "max depth of the pretrained network, default = max_depth");
+    parser.add_argument("-f","--freeze", 1, true, "freeze leading pretraining layers, default = chk_depth < max_depth ? chk_depth : 0");
 
     // train
     /// parser.add_argument("-z", "--zero_point", 1, true, "zero of potential energy, default = 0");

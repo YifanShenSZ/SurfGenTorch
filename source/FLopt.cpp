@@ -7,11 +7,11 @@ To make use of Fortran-Library nonlinear optimizers:
 #include <omp.h>
 
 #include <FortranLibrary.hpp>
-#include "../../Cpp-Library_v1.0.0/TorchSupport.hpp"
+#include <CppLibrary/TorchSupport.hpp>
 
-#include "../../include/SSAIC.hpp"
-#include "../../include/AbInitio.hpp"
-#include "../../include/net.hpp"
+#include "SSAIC.hpp"
+#include "AbInitio.hpp"
+#include "net.hpp"
 
 namespace DimRed { namespace FLopt {
 

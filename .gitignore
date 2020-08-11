@@ -35,8 +35,7 @@ build/
 *.out
 *.app
 
-# Visual studio and VS code
-.vscode/
+# Visual studio
 test-windows/
 
 # Back up
