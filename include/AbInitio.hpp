@@ -17,6 +17,8 @@ In addition, geometries can be extracted alone to feed pretraining
 
 namespace AbInitio {
 
+const double DegThresh = 0.0001;
+
 class GeomLoader { public:
     at::Tensor cartgeom, intgeom;
 
@@ -34,6 +36,41 @@ class geom { public:
     geom();
     geom(const GeomLoader & loader);
     ~geom();
+};
+
+class DataLoader : public GeomLoader { public:
+    at::Tensor BT, energy, dH;
+
+    DataLoader();
+    DataLoader(const int & cartdim, const int & intdim, const int & NStates);
+    ~DataLoader();
+
+    void init(const int & cartdim, const int & intdim, const int & NStates);
+    void cart2int();
+    void SubtractRef(const double & zero_point);
+};
+
+// Regular data
+class RegData { public:
+    double weight = 1.0;
+    std::vector<at::Tensor> input_layer, JT;
+    at::Tensor energy, dH;
+
+    RegData();
+    RegData(DataLoader & loader);
+    ~RegData();
+
+    void adjust_weight(const double & Ethresh);
+};
+
+// Degenerate data
+class DegData { public:
+    std::vector<at::Tensor> input_layer, JT;
+    at::Tensor H, dH;
+
+    DegData();
+    DegData(DataLoader & loader);
+    ~DegData();
 };
 
 template <class T> class DataSet : public torch::data::datasets::Dataset<DataSet<T>, T*> {
@@ -54,6 +91,9 @@ template <class T> class DataSet : public torch::data::datasets::Dataset<DataSet
 };
 
 DataSet<geom> * read_GeomSet(const std::vector<std::string> & data_set);
+
+std::tuple<DataSet<RegData> *, DataSet<DegData> *> read_DataSet(
+const std::vector<std::string> & data_set, const double & zero_point = 0.0);
 
 } // namespace AbInitio
 

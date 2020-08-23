@@ -4,7 +4,6 @@ import torch
 import torch.nn.functional
 import torch.optim
 
-import utility
 import SSAIC
 import AbInitio
 import DimRed

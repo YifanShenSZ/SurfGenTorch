@@ -83,18 +83,6 @@ template <class T> class xyz_mass : public xyz<T> {
         inline std::vector<T> mass() const {return mass_;}
 };
 
-template <typename T0, typename T1, typename T2> bool CheckDegeneracy(
-const T0 & threshold, T1 * energy, const T2 & N) {
-    bool deg = false;
-    for (auto i = 0; i < N - 1; i++) {
-        if (energy[i+1] - energy[i] < threshold) {
-            deg = true;
-            break;
-        }
-    }
-    return deg;
-}
-
 } // namespace chemistry
 } // namespace CL
 

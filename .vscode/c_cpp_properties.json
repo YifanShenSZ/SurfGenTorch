@@ -3,7 +3,7 @@
         {
             "name": "Linux",
             "includePath": [
-                "~/Software/Programming/libtorch-cpu/include/**",
+                "~/Software/Programming/libtorch-cpu-1.4.0/include/**",
                 "Cpp-Library_v1.0.0",
                 "include"
             ],

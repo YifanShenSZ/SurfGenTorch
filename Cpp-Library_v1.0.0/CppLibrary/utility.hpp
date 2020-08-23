@@ -10,6 +10,10 @@
 #include <vector>
 #include <forward_list>
 #include <iterator>
+#include <algorithm> 
+#include <functional> 
+#include <cctype>
+#include <locale>
 
 namespace CL { namespace utility {
 
@@ -28,6 +32,13 @@ size_t NLines(const std::string & file);
 
 // Get the number of strings in a file
 size_t NStrings(const std::string & file);
+
+// Trim from start
+void ltrim(std::string & s);
+// Trim from end
+void rtrim(std::string & s);
+// Trim from both ends
+void trim(std::string & s);
 
 // Split text with white space
 std::vector<std::string> split(const std::string & text);

@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -parallel -mkl -ipo -m64 -xCORE-AVX2 -mtune=core-avx2 -O3 -no-prec-div -fp-model fast=2 -static-intel")
 
 # libtorch
-set(CMAKE_PREFIX_PATH ~/Software/Programming/libtorch-cpu)
+set(CMAKE_PREFIX_PATH ~/Software/Programming/libtorch-cpu-1.6.0)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 find_package(Torch REQUIRED)
 
@@ -22,12 +22,13 @@ add_subdirectory(Cpp-Library_v1.0.0)
 
 include_directories(include)
 add_executable(SurfGenTorch.exe
-    source/utility.cpp
     source/SSAIC.cpp
-    source/AbInitio.cpp
     source/DimRed.cpp
-    source/FLopt.cpp
+    source/Hd.cpp
+    source/utility.cpp
+    source/AbInitio.cpp
     source/pretrain.cpp
+    source/train.cpp
     source/main.cpp
 )
 target_link_libraries(SurfGenTorch.exe "${TORCH_LIBRARIES}" FL CL)

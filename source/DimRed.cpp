@@ -1,14 +1,21 @@
-// A feedforward neural network to reduce dimensionality
+/*
+A feedforward neural network to reduce dimensionality
+
+To maintain symmetry:
+    1. the inputs of a network must belong to a same irreducible
+    2. the activation functions must be even functions
+*/
 
 #include <torch/torch.h>
 
+#include <CppLibrary/utility.hpp>
 #include <CppLibrary/TorchSupport.hpp>
 
-#include "SSAIC.hpp"
-#include "net.hpp"
+#include "DimRed.hpp"
 
 namespace DimRed {
 
+Net::Net() {}
 // max_depth == 0 means unlimited
 Net::Net(const size_t & init_dim, const size_t & max_depth) {
     // Determine depth
@@ -33,10 +40,27 @@ Net::Net(const size_t & init_dim, const size_t & max_depth) {
             .bias(false)));
     }
 }
-
+Net::~Net() {}
+at::Tensor Net::reduce(const at::Tensor & x) {
+    at::Tensor y = x.clone();
+    for (auto & layer : fc) {
+        y = (*layer)->forward(y);
+        y = torch::tanh(y);
+    }
+    return y;
+}
+at::Tensor Net::inverse(const at::Tensor & x) {
+    at::Tensor y = x.clone();
+    for (auto layer = fc_inv.rbegin();
+        layer != fc_inv.rend(); ++layer) {
+        y = torch::tanh(y);
+        y = (**layer)->forward(y);
+    }
+    return y;
+}
 // For pretraining
-torch::Tensor Net::forward(const at::Tensor & x) {
-    torch::Tensor y = x.clone();
+at::Tensor Net::forward(const at::Tensor & x) {
+    at::Tensor y = x.clone();
     // Reduce dimensionality
     for (auto & layer : fc) {
         y = (*layer)->forward(y);
@@ -50,29 +74,78 @@ torch::Tensor Net::forward(const at::Tensor & x) {
     }
     return y;
 }
-
 void Net::copy(const std::shared_ptr<Net> & net) {
     torch::NoGradGuard no_grad;
     for (size_t i = 0; i < (fc.size() < net->fc.size() ? fc.size() : net->fc.size()); i++) {
-        CL::TS::copy((*(net->fc    [i]))->weight, (*fc    [i])->weight);
-        CL::TS::copy((*(net->fc_inv[i]))->weight, (*fc_inv[i])->weight);
+        std::memcpy((*fc[i])->weight.data_ptr<double>(),
+                    (*(net->fc[i]))->weight.data_ptr<double>(),
+                    (*fc[i])->weight.numel() * sizeof(double));
+        std::memcpy((*fc_inv[i])->weight.data_ptr<double>(),
+                    (*(net->fc_inv[i]))->weight.data_ptr<double>(),
+                    (*fc_inv[i])->weight.numel() * sizeof(double));
     }
 }
-
 void Net::warmstart(const std::string & chk, const size_t & chk_depth) {
     auto warm_net = std::make_shared<Net>((*fc[0])->options.in_features(), chk_depth);
     warm_net->to(torch::kFloat64);
     torch::load(warm_net, chk);
     this->copy(warm_net);
+    this->train();
     warm_net.reset();
 }
-
 void Net::freeze(const size_t & freeze) {
     assert(("All layers are frozen, so nothing to train", freeze < fc.size()));
     for (size_t i = 0; i < freeze; i++) {
         (*fc    [i])->weight.set_requires_grad(false);
         (*fc_inv[i])->weight.set_requires_grad(false);
     }
+}
+
+// Each irreducible owns a network
+std::vector<std::shared_ptr<Net>> nets;
+
+void define_DimRed(const std::string & DimRed_in) {
+    size_t NIrred;
+    std::ifstream ifs; ifs.open(DimRed_in);
+        std::string line;
+        std::vector<std::string> strs;
+        // Initial dimension of each network
+        std::vector<std::string> init_dims;
+        std::getline(ifs, line);
+        std::getline(ifs, line); CL::utility::split(line, init_dims);
+        NIrred = init_dims.size();
+        // Network parameters
+        std::vector<std::string> net_pars(NIrred);
+        std::vector<size_t> net_depths(NIrred);
+        std::getline(ifs, line);
+        for (size_t i = 0; i < NIrred; i++) {
+            std::getline(ifs, line);
+            strs = CL::utility::split(line);
+            net_pars[i] = strs[0];
+            if (strs.size() > 1) net_depths[i] = std::stoul(strs[1]);
+            else net_depths[i] = 0;
+        }
+    ifs.close();
+    // Initialize networks
+    nets.resize(NIrred);
+    for (size_t i = 0; i < NIrred; i++) {
+        nets[i] = std::make_shared<Net>(std::stoul(init_dims[i]), net_depths[i]);
+        nets[i]->to(torch::kFloat64);
+        torch::load(nets[i], net_pars[i]);
+        nets[i]->eval();
+    }
+}
+
+std::vector<at::Tensor> reduce(const std::vector<at::Tensor> & x) {
+    std::vector<at::Tensor> y(x.size());
+    for (size_t i = 0; i < x.size(); i++) y[i] = nets[i]->reduce(x[i]);
+    return y;
+}
+
+std::vector<at::Tensor> inverse(const std::vector<at::Tensor> & x) {
+    std::vector<at::Tensor> y(x.size());
+    for (size_t i = 0; i < x.size(); i++) y[i] = nets[i]->inverse(x[i]);
+    return y;
 }
 
 } // namespace DimRed
