@@ -51,8 +51,7 @@ at::Tensor Net::reduce(const at::Tensor & x) {
 }
 at::Tensor Net::inverse(const at::Tensor & x) {
     at::Tensor y = x.clone();
-    for (auto layer = fc_inv.rbegin();
-        layer != fc_inv.rend(); ++layer) {
+    for (auto layer = fc_inv.rbegin(); layer != fc_inv.rend(); ++layer) {
         y = torch::tanh(y);
         y = (**layer)->forward(y);
     }
@@ -67,8 +66,7 @@ at::Tensor Net::forward(const at::Tensor & x) {
         y = torch::tanh(y);
     }
     // Inverse the reduction
-    for (auto layer = fc_inv.rbegin();
-        layer != fc_inv.rend(); ++layer) {
+    for (auto layer = fc_inv.rbegin(); layer != fc_inv.rend(); ++layer) {
         y = torch::tanh(y);
         y = (**layer)->forward(y);
     }
@@ -90,7 +88,6 @@ void Net::warmstart(const std::string & chk, const size_t & chk_depth) {
     warm_net->to(torch::kFloat64);
     torch::load(warm_net, chk);
     this->copy(warm_net);
-    this->train();
     warm_net.reset();
 }
 void Net::freeze(const size_t & freeze) {

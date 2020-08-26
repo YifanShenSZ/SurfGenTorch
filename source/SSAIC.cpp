@@ -4,12 +4,12 @@ Scaled and symmetry adapted internal coordinate (SSAIC)
 The procedure of this module:
     1. Define internal coordinates
     2. Nondimensionalize the internal coordinates:
-       for length, ic = (ic - origin) / origin
-       for angle , ic =  ic - origin
+       for length, dic = (ic - origin) / origin
+       for angle , dic =  ic - origin
     3. Scale the dimensionless internal coordinates:
-       if no scaler      : ic = ic
-       elif scaler = self: ic = pi * erf(ic)
-       else              : ic = ic * exp(-alpha * scaler)
+       if no scaler      : sic = nic
+       elif scaler = self: sic = pi * erf(nic)
+       else              : sic = nic * exp(-alpha * scaler nic)
     4. Symmetry adapted linear combinate the scaled dimensionless internal coordinates
 */
 
@@ -43,8 +43,8 @@ struct OthScalRul {
 
     OthScalRul() {}
     OthScalRul(const std::vector<std::string> & input_line) {
-        self   = std::stoul(input_line[0])-1;
-        scaler = std::stoul(input_line[1])-1;
+        self   = std::stoul(input_line[0]) - 1;
+        scaler = std::stoul(input_line[1]) - 1;
         alpha  = std::stod (input_line[2]);
     }
     ~OthScalRul() {}
@@ -168,17 +168,17 @@ void define_SSAIC(const std::string & SSAIC_in) {
 std::vector<at::Tensor> compute_SSAIC(const at::Tensor & q) {
     // Nondimensionalize
     at::Tensor work = q - origin;
-    for (size_t i = 0; i < intdim; i++) {
-        if (IntCoordDef[i].motion[0].type == "stretching") work[i] /= origin[i];
-    }
-// Need a periodic check someday, for e.g. torsion1 + torsion2 should belong to [-pi, pi] rather than [-2pi, 2pi]
+    for (size_t i = 0; i < intdim; i++)
+    if (IntCoordDef[i].motion[0].type == "stretching")
+    work[i] /= origin[i];
+// Need a periodic check someday, e.g. torsion1 + torsion2 should belong to [-pi, pi] rather than [-2pi, 2pi]
     // Scale
     for (OthScalRul & scaling : other_scaling) work[scaling.self] *= at::exp(-scaling.alpha * work[scaling.scaler]);
     work = M_PI * at::erf(self_scaling.mv(work)) + self_complete.mv(work);
     // Symmetrize
     std::vector<at::Tensor> SSAgeom(NIrred);
     for (size_t irred = 0; irred < NIrred; irred++) {
-        SSAgeom[irred] = work.new_zeros(symmetry_adaptation[irred].size());
+        SSAgeom[irred] = q.new_zeros(symmetry_adaptation[irred].size());
         for (size_t i = 0; i < SSAgeom[irred].size(0); i++) {
             for (size_t j = 0; j < symmetry_adaptation[irred][i].coeff.size(); j++)
             SSAgeom[irred][i] += symmetry_adaptation[irred][i].coeff[j]

@@ -41,7 +41,7 @@ at::Tensor Net::forward(const at::Tensor & x) {
         y = (*layer)->forward(y);
         y = torch::tanh(y);
     }
-    return y;
+    return y[0];
 }
 // For training
 void Net::copy(const std::shared_ptr<Net> & net) {
@@ -54,14 +54,12 @@ void Net::copy(const std::shared_ptr<Net> & net) {
                 (*(net->fc[i]))->bias.data_ptr<double>(),
                 (*fc[i])->bias.numel() * sizeof(double));
     }
-    
 }
 void Net::warmstart(const std::string & chk, const size_t & chk_depth) {
     auto warm_net = std::make_shared<Net>((*fc[0])->options.in_features(), chk_depth);
     warm_net->to(torch::kFloat64);
     torch::load(warm_net, chk);
     this->copy(warm_net);
-    this->train();
     warm_net.reset();
 }
 void Net::freeze(const size_t & freeze) {
@@ -192,6 +190,7 @@ void define_Hd(const std::string & Hd_in) {
                 Hd::Hd_symm[i][j] == 0);
             nets[i][j]->to(torch::kFloat64);
             torch::load(nets[i][j], net_pars[index]);
+            nets[i][j]->eval();
             index++;
         }
     }
@@ -201,27 +200,19 @@ at::Tensor compute_Hd(const std::vector<at::Tensor> & x) {
     // Determine input layer
     std::vector<at::Tensor> input_layer = input::input_layer(x);
     // Compute upper triangle
-    at::Tensor Hd = at::empty({NStates, NStates}, at::TensorOptions().dtype(torch::kFloat64));
+    at::Tensor Hd = x[0].new_empty({NStates, NStates});
     for (size_t i = 0; i < NStates; i++)
     for (size_t j = i; j < NStates; j++)
     Hd[i][j] = nets[i][j]->forward(input_layer[Hd_symm[i][j]]);
-    // Copy to lower triangle
-    for (size_t i = 0; i < NStates; i++)
-    for (size_t j = 0; j < i; j++)
-    Hd[i][j] = Hd[j][i];
     return Hd;
 }
 
 at::Tensor compute_Hd_from_input_layer(const std::vector<at::Tensor> & input_layer) {
     // Compute upper triangle
-    at::Tensor Hd = at::empty({NStates, NStates}, at::TensorOptions().dtype(torch::kFloat64));
+    at::Tensor Hd = input_layer[0].new_empty({NStates, NStates});
     for (size_t i = 0; i < NStates; i++)
     for (size_t j = i; j < NStates; j++)
-    Hd[i][j] = nets[i][j]->forward(input_layer[Hd_symm[i][j]])[0];
-    // Copy to lower triangle
-    for (size_t i = 0; i < NStates; i++)
-    for (size_t j = 0; j < i; j++)
-    Hd[i][j].copy_(Hd[j][i]);
+    Hd[i][j] = nets[i][j]->forward(input_layer[Hd_symm[i][j]]);
     return Hd;
 }
 

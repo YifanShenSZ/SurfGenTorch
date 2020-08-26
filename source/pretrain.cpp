@@ -38,11 +38,8 @@ namespace FLopt {
         size_t count = 0;
         for (auto & p : net->parameters())
         if (p.requires_grad()) {
-            double * pp = p.data_ptr<double>();
-            for (size_t i = 0; i < p.numel(); i++) {
-                c[count] = pp[i];
-                count++;
-            }
+            std::memcpy(&(c[count]), p.data_ptr<double>(), p.numel() * sizeof(double));
+            count += p.numel();
         }
     }
     // Push c to network parameters
@@ -51,11 +48,8 @@ namespace FLopt {
         size_t count = 0;
         for (auto & p : net->parameters())
         if (p.requires_grad()) {
-            double * pp = p.data_ptr<double>();
-            for (size_t i = 0; i < p.numel(); i++) {
-                pp[i] = c[count];
-                count++;
-            }
+            std::memcpy(p.data_ptr<double>(), &(c[count]), p.numel() * sizeof(double));
+            count += p.numel();
         }
     }
 
@@ -65,7 +59,7 @@ namespace FLopt {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
             c2p(nets[thread]);
-            loss[thread] = torch::zeros(1, at::TensorOptions().dtype(torch::kFloat64));
+            loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
                     nets[thread]->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
@@ -80,7 +74,7 @@ namespace FLopt {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
             c2p(nets[thread]);
-            loss[thread] = torch::zeros(1, at::TensorOptions().dtype(torch::kFloat64));
+            loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
                     nets[thread]->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
@@ -118,7 +112,7 @@ namespace FLopt {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
             c2p(nets[thread]);
-            loss[thread] = torch::zeros(1, at::TensorOptions().dtype(torch::kFloat64));
+            loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
                     nets[thread]->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
@@ -202,9 +196,10 @@ namespace FLopt {
     const size_t & irred_, const size_t & freeze_,
     const std::vector<AbInitio::geom *> & GeomSet_) {
         OMP_NUM_THREADS = omp_get_max_threads();
-    
+        std::cout << "The number of threads = " << OMP_NUM_THREADS << '\n';
+
         irred = irred_;
-    
+
         nets.resize(OMP_NUM_THREADS);
         nets[0] = net_;
         for (size_t i = 1; i < OMP_NUM_THREADS; i++) {
@@ -216,7 +211,7 @@ namespace FLopt {
         Nc = CL::TS::NParameters(nets[0]->parameters());
         c = new double[Nc];
         p2c(nets[0]);
-    
+
         GeomSet = GeomSet_;
         size_t NData = OMP_NUM_THREADS * (GeomSet.size() / OMP_NUM_THREADS);
         std::cout << "For parallelism, the number of data in use = " << NData << '\n';
@@ -275,7 +270,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
             size_t follow = epoch / 10;
             for (size_t iepoch = 1; iepoch <= epoch; iepoch++) {
                 for (auto & batch : * geom_loader) {
-                    at::Tensor loss = torch::zeros(1, at::TensorOptions().dtype(torch::kFloat64));
+                    at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
                     for (auto & data : batch) {
                         loss += torch::mse_loss(
                             net->forward(data->SAIgeom[irred]), data->SAIgeom[irred],
@@ -304,7 +299,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
             size_t follow = epoch / 10;
             for (size_t iepoch = 1; iepoch <= epoch; iepoch++) {
                 for (auto & batch : * geom_loader) {
-                    at::Tensor loss = torch::zeros(1, at::TensorOptions().dtype(torch::kFloat64));
+                    at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
                     for (auto & data : batch) {
                         loss += torch::mse_loss(
                             net->forward(data->SAIgeom[irred]), data->SAIgeom[irred],

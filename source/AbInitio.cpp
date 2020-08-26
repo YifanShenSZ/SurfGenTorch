@@ -1,9 +1,6 @@
 /*
 To load and process ab initio data
 
-The prerequisite of any fit is data
-Specifically, for Hd construction data comes from ab initio
-
 The ab initio data will be classified into regular or degenerate,
 based on energy gap and degeneracy threshold
 
@@ -81,23 +78,27 @@ RegData::RegData(DataLoader & loader) {
     // input_layer and J^T
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(loader.intgeom);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
-    input_layer = Hd::input::input_layer(Redgeom);
-    JT.resize(input_layer.size());
-    for (size_t irred = 0; irred < input_layer.size(); irred++) {
+    std::vector<at::Tensor> InpLay = Hd::input::input_layer(Redgeom);
+    input_layer.resize(InpLay.size());
+    for (size_t irred = 0; irred < InpLay.size(); irred++) {
+        input_layer[irred] = InpLay[irred].detach();
+        input_layer[irred].set_requires_grad(true);
+    }
+    JT.resize(InpLay.size());
+    for (size_t irred = 0; irred < InpLay.size(); irred++) {
         at::Tensor dinput_layer_divide_dintgeom = at::empty(
-            {input_layer[irred].size(0), loader.intgeom.size(0)},
+            {InpLay[irred].size(0), loader.intgeom.size(0)},
             at::TensorOptions().dtype(torch::kFloat64));
-        for (size_t i = 0; i < input_layer[irred].size(0); i++) {
+        for (size_t i = 0; i < InpLay[irred].size(0); i++) {
             if (loader.intgeom.grad().defined()) {
                 loader.intgeom.grad().detach_();
                 loader.intgeom.grad().zero_();
             };
-            input_layer[irred][i].backward({}, true);
+            InpLay[irred][i].backward({}, true);
             dinput_layer_divide_dintgeom[i].copy_(loader.intgeom.grad());
         }
         JT[irred] = loader.BT.mm(dinput_layer_divide_dintgeom.transpose(0, 1));
     }
-    for (auto & irred : input_layer) irred.set_requires_grad(true);
     // energy and dH
     energy = loader.energy.clone();
     dH = loader.dH.clone();
@@ -113,30 +114,34 @@ void RegData::adjust_weight(const double & Ethresh) {
 
 DegData::DegData() {}
 DegData::DegData(DataLoader & loader) {
-    // input_layer and J^T
     loader.intgeom.set_requires_grad(true);
+    // input_layer and J^T
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(loader.intgeom);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
-    input_layer = Hd::input::input_layer(Redgeom);
-    JT.resize(input_layer.size());
-    for (size_t irred = 0; irred < input_layer.size(); irred++) {
+    std::vector<at::Tensor> InpLay = Hd::input::input_layer(Redgeom);
+    input_layer.resize(InpLay.size());
+    for (size_t irred = 0; irred < InpLay.size(); irred++) {
+        input_layer[irred] = InpLay[irred].detach();
+        input_layer[irred].set_requires_grad(true);
+    }
+    JT.resize(InpLay.size());
+    for (size_t irred = 0; irred < InpLay.size(); irred++) {
         at::Tensor dinput_layer_divide_dintgeom = at::empty(
-            {input_layer[irred].size(0), loader.intgeom.size(0)},
+            {InpLay[irred].size(0), loader.intgeom.size(0)},
             at::TensorOptions().dtype(torch::kFloat64));
-        for (size_t i = 0; i < input_layer[irred].size(0); i++) {
+        for (size_t i = 0; i < InpLay[irred].size(0); i++) {
             if (loader.intgeom.grad().defined()) {
                 loader.intgeom.grad().detach_();
                 loader.intgeom.grad().zero_();
             };
-            input_layer[irred][i].backward({}, true);
+            InpLay[irred][i].backward({}, true);
             dinput_layer_divide_dintgeom[i].copy_(loader.intgeom.grad());
         }
         JT[irred] = loader.BT.mm(dinput_layer_divide_dintgeom.transpose(0, 1));
     }
-    for (auto & irred : input_layer) irred.set_requires_grad(true);
     // H and dH
     // Diagonalize ▽H . ▽H
-    at::Tensor dHdH = CL::TS::LA::matdotmul(loader.dH, loader.dH);
+    at::Tensor dHdH = CL::TS::LA::sy3matdotmul(loader.dH, loader.dH);
     at::Tensor eigval, eigvec;
     std::tie(eigval, eigvec) = dHdH.symeig(true, true);
     dHdH = eigvec.transpose(0, 1);

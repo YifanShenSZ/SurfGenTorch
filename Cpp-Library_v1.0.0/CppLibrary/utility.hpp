@@ -63,8 +63,8 @@ template <typename T> void CreateArray(T ** & A, const int & N1, const int & N2)
         A[0] = new T[N1*N2];
         for (int i = 1; i < N1; i++) A[i] = A[i-1] + N2;
     }
-    catch (std::bad_alloc & e) {
-        throw e;
+    catch (std::bad_alloc & error) {
+        throw error;
     }
 }
 template <typename T> void DeleteArray(T ** & A) {

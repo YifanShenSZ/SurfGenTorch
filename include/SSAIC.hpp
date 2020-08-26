@@ -5,8 +5,6 @@
 
 #include <torch/torch.h>
 
-#include <FortranLibrary.hpp>
-
 namespace SSAIC {
 
 // Internal coordinate dimension, not necessarily = cartdim - 6 or 5

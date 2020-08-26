@@ -1,9 +1,6 @@
 /*
 To load and process ab initio data
 
-The prerequisite of any fit is data
-Specifically, for Hd construction data comes from ab initio
-
 The ab initio data will be classified into regular or degenerate,
 based on energy gap and degeneracy threshold
 
