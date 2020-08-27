@@ -20,6 +20,8 @@ In addition, geometries can be extracted alone to feed pretraining
 
 namespace AbInitio {
 
+const double DegThresh = 0.0001;
+
 GeomLoader::GeomLoader() {}
 GeomLoader::GeomLoader(const int & cartdim, const int & intdim) {
     c10::TensorOptions top = at::TensorOptions().dtype(torch::kFloat64);
@@ -196,7 +198,8 @@ DataSet<geom> * read_GeomSet(const std::vector<std::string> & data_set) {
 }
 
 std::tuple<DataSet<RegData> *, DataSet<DegData> *> read_DataSet(
-const std::vector<std::string> & data_set, const double & zero_point) {
+const std::vector<std::string> & data_set,
+const double & zero_point, const double & weight) {
     // Count the number of data
     std::vector<size_t> NDataPerSet(data_set.size());
     size_t NDataTotal = 0;
@@ -278,6 +281,7 @@ const std::vector<std::string> & data_set, const double & zero_point) {
                 NDegData++;
             } else {
                 vec_p_RegData[NRegData] = new RegData(RawDataLoader[i]);
+                vec_p_RegData[NRegData]->adjust_weight(weight);
                 NRegData++;
             }
         }

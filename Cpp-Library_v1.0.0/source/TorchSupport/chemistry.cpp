@@ -17,42 +17,41 @@ namespace CL { namespace TS { namespace chemistry {
     // Matrix off-diagonal elements do not have determinate phase, because
     // the eigenvectors defining a representation have indeterminate phase difference
 
-    // This module will fix the phase of NStates order symmetric matrix
-    size_t NStates;
-    // There are 2^(NStates-1) possibilities in total,
-    // where the user input matrix indicates the base case and is excluded from trying,
-    // so possible_phases.size() = 2^(NStates-1) - 1
-    // possible_phases[i] contains one of the phases of NStates states
+    // For a certain number of electronic states (NStates),
+    // there are 2^(NStates-1) possibilities in total
+    // The user input matrix indicates the base case and is excluded from trying,
+    // so possible_phases[NStates-2].size() = 2^(NStates-1) - 1
+    // possible_phases[NStates-2][i] contains one of the phases of NStates electronic states
     // where true means -, false means +,
     // the phase of the last state is always arbitrarily assigned to +,
-    // so possible_phases[i].size() == NStates-1
-    std::vector<std::vector<bool>> possible_phases;
+    // so possible_phases[NStates-2][i].size() == NStates-1
+    std::vector<std::vector<std::vector<bool>>> possible_phases;
 
-    void initialize_phase_fixing(const size_t & NStates_) {
-        // NStates
-        NStates = NStates_;
-        // possible_phases
-        possible_phases.clear();
-        // Unchanged case is exculded
-        possible_phases.resize(1 << (NStates-1) - 1);
-        for (auto & phase : possible_phases) phase.resize(NStates-1);
-        possible_phases[0][0] = true;
-        for (size_t i = 1; i < NStates-1; i++)
-        possible_phases[0][i] = false;
-        for (size_t i = 1; i < possible_phases.size(); i++) {
-            for (size_t j = 0; j < NStates-1; j++)
-            possible_phases[i][j] = possible_phases[i-1][j];
-            size_t count = 0;
-            while(possible_phases[i][count]) {
-                possible_phases[i][count] = false;
-                count++;
+    // Prepare possible_phases for up to NStates electronic states
+    void initialize_phase_fixing(const size_t & NStates) {
+        possible_phases.resize(NStates-1);
+        for (size_t N = 0; N < NStates-1; N++) {
+            // Unchanged case is exculded
+            possible_phases[N].resize(1 << (N+1) - 1);
+            for (auto & phase : possible_phases[N]) phase.resize(N+1);
+            possible_phases[N][0][0] = true;
+            for (size_t j = 1; j < N+1; j++) possible_phases[N][0][j] = false;
+            for (size_t i = 1; i < possible_phases[N].size(); i++) {
+                for (size_t j = 0; j < N+1; j++) possible_phases[N][i][j] = possible_phases[N][i-1][j];
+                size_t count = 0;
+                while(possible_phases[N][i][count]) {
+                    possible_phases[N][i][count] = false;
+                    count++;
+                }
+                possible_phases[N][i][count] = true;
             }
-            possible_phases[i][count] = true;
         }
     }
 
     // Fix M by minimizing || M - ref ||_F^2
     void fix(at::Tensor & M, const at::Tensor & ref) {
+        size_t NStates = M.size(0);
+        const auto & possibilities = possible_phases[NStates - 2];
         double change_min = 0.0;
         int     phase_min = -1;
         if (M.sizes().size() > 2) {
@@ -67,13 +66,13 @@ namespace CL { namespace TS { namespace chemistry {
                 sum_dim = c10::IntArrayRef(dim_vec.data(), dim_vec.size());
             }
             // Try out phase possibilities
-            for (int phase = 0; phase < possible_phases.size(); phase++) {
+            for (int phase = 0; phase < possibilities.size(); phase++) {
                 at::Tensor change = M.new_zeros({});
                 for (size_t i = 0; i < NStates; i++) {
                     for (size_t j = i+1; j < NStates-1; j++)
-                    if (possible_phases[phase][i] != possible_phases[phase][j])
+                    if (possibilities[phase][i] != possibilities[phase][j])
                     change += (-M[i][j] - ref[i][j]).pow_(2).sum(sum_dim) - diff[i][j];
-                    if (possible_phases[phase][i])
+                    if (possibilities[phase][i])
                     change += (-M[i][NStates-1] - ref[i][NStates-1]).pow_(2).sum(sum_dim) - diff[i][NStates-1];
                 }
                 if (change.item<double>() < change_min) {
@@ -85,13 +84,13 @@ namespace CL { namespace TS { namespace chemistry {
         else {
             at::Tensor diff = (M - ref).pow_(2);
             // Try out phase possibilities
-            for (int phase = 0; phase < possible_phases.size(); phase++) {
+            for (int phase = 0; phase < possibilities.size(); phase++) {
                 at::Tensor change = M.new_zeros({});
                 for (size_t i = 0; i < NStates; i++) {
                     for (size_t j = i+1; j < NStates-1; j++)
-                    if (possible_phases[phase][i] != possible_phases[phase][j])
+                    if (possibilities[phase][i] != possibilities[phase][j])
                     change += (-M[i][j] - ref[i][j]).pow_(2) - diff[i][j];
-                    if (possible_phases[phase][i])
+                    if (possibilities[phase][i])
                     change += (-M[i][NStates-1] - ref[i][NStates-1]).pow_(2) - diff[i][NStates-1];
                 }
                 if (change.item<double>() < change_min) {
@@ -104,15 +103,17 @@ namespace CL { namespace TS { namespace chemistry {
         if (phase_min > -1) {
             for (size_t i = 0; i < NStates; i++) {
                 for (size_t j = i+1; j < NStates-1; j++)
-                if (possible_phases[phase_min][i] != possible_phases[phase_min][j])
+                if (possibilities[phase_min][i] != possibilities[phase_min][j])
                 M[i][j] = -M[i][j];
-                if (possible_phases[phase_min][i])
+                if (possibilities[phase_min][i])
                 M[i][NStates-1] = -M[i][NStates-1];
             }
         }
     }
     // Fix M1 and M2 by minimizing weight * || M1 - ref1 ||_F^2 + || M2 - ref2 ||_F^2
     void fix(at::Tensor & M1, at::Tensor & M2, const at::Tensor & ref1, const at::Tensor & ref2, const double & weight) {
+        size_t NStates = M1.size(0);
+        const auto & possibilities = possible_phases[NStates - 2];
         double change_min = 0.0;
         int     phase_min = -1;
         if (M1.sizes().size() > 2 && M2.sizes().size() > 2) {
@@ -136,15 +137,15 @@ namespace CL { namespace TS { namespace chemistry {
                 sum_dim2 = c10::IntArrayRef(dim_vec2.data(), dim_vec2.size());
             }
             // Try out phase possibilities
-            for (int phase = 0; phase < possible_phases.size(); phase++) {
+            for (int phase = 0; phase < possibilities.size(); phase++) {
                 at::Tensor change = M1.new_zeros({});
                 for (size_t i = 0; i < NStates; i++) {
                     for (size_t j = i+1; j < NStates-1; j++)
-                    if (possible_phases[phase][i] != possible_phases[phase][j])
+                    if (possibilities[phase][i] != possibilities[phase][j])
                     change += weight * (-M1[i][j] - ref1[i][j]).pow_(2).sum(sum_dim1)
                               + (-M2[i][j] - ref2[i][j]).pow_(2).sum(sum_dim2)
                               - diff[i][j];
-                    if (possible_phases[phase][i])
+                    if (possibilities[phase][i])
                     change += weight * (-M1[i][NStates-1] - ref1[i][NStates-1]).pow_(2).sum(sum_dim1)
                               + (-M2[i][NStates-1] - ref2[i][NStates-1]).pow_(2).sum(sum_dim2)
                               - diff[i][NStates-1];
@@ -167,15 +168,15 @@ namespace CL { namespace TS { namespace chemistry {
                 sum_dim1 = c10::IntArrayRef(dim_vec1.data(), dim_vec1.size());
             }
             // Try out phase possibilities
-            for (int phase = 0; phase < possible_phases.size(); phase++) {
+            for (int phase = 0; phase < possibilities.size(); phase++) {
                 at::Tensor change = M1.new_zeros({});
                 for (size_t i = 0; i < NStates; i++) {
                     for (size_t j = i+1; j < NStates-1; j++)
-                    if (possible_phases[phase][i] != possible_phases[phase][j])
+                    if (possibilities[phase][i] != possibilities[phase][j])
                     change += weight * (-M1[i][j] - ref1[i][j]).pow_(2).sum(sum_dim1)
                               + (-M2[i][j] - ref2[i][j]).pow_(2)
                               - diff[i][j];
-                    if (possible_phases[phase][i])
+                    if (possibilities[phase][i])
                     change += weight * (-M1[i][NStates-1] - ref1[i][NStates-1]).pow_(2).sum(sum_dim1)
                               + (-M2[i][NStates-1] - ref2[i][NStates-1]).pow_(2)
                               - diff[i][NStates-1];
@@ -198,15 +199,15 @@ namespace CL { namespace TS { namespace chemistry {
                 sum_dim2 = c10::IntArrayRef(dim_vec2.data(), dim_vec2.size());
             }
             // Try out phase possibilities
-            for (int phase = 0; phase < possible_phases.size(); phase++) {
+            for (int phase = 0; phase < possibilities.size(); phase++) {
                 at::Tensor change = M1.new_zeros({});
                 for (size_t i = 0; i < NStates; i++) {
                     for (size_t j = i+1; j < NStates-1; j++)
-                    if (possible_phases[phase][i] != possible_phases[phase][j])
+                    if (possibilities[phase][i] != possibilities[phase][j])
                     change += weight * (-M1[i][j] - ref1[i][j]).pow_(2)
                               + (-M2[i][j] - ref2[i][j]).pow_(2).sum(sum_dim2)
                               - diff[i][j];
-                    if (possible_phases[phase][i])
+                    if (possibilities[phase][i])
                     change += weight * (-M1[i][NStates-1] - ref1[i][NStates-1]).pow_(2)
                               + (-M2[i][NStates-1] - ref2[i][NStates-1]).pow_(2).sum(sum_dim2)
                               - diff[i][NStates-1];
@@ -220,15 +221,15 @@ namespace CL { namespace TS { namespace chemistry {
         else {
             at::Tensor diff = weight * (M1 - ref1).pow_(2) + (M2 - ref2).pow_(2);
             // Try out phase possibilities
-            for (int phase = 0; phase < possible_phases.size(); phase++) {
+            for (int phase = 0; phase < possibilities.size(); phase++) {
                 at::Tensor change = M1.new_zeros({});
                 for (size_t i = 0; i < NStates; i++) {
                     for (size_t j = i+1; j < NStates-1; j++)
-                    if (possible_phases[phase][i] != possible_phases[phase][j])
+                    if (possibilities[phase][i] != possibilities[phase][j])
                     change += weight * (-M1[i][j] - ref1[i][j]).pow_(2)
                               + (-M2[i][j] - ref2[i][j]).pow_(2)
                               - diff[i][j];
-                    if (possible_phases[phase][i])
+                    if (possibilities[phase][i])
                     change += weight * (-M1[i][NStates-1] - ref1[i][NStates-1]).pow_(2)
                               + (-M2[i][NStates-1] - ref2[i][NStates-1]).pow_(2)
                               - diff[i][NStates-1];
@@ -243,11 +244,11 @@ namespace CL { namespace TS { namespace chemistry {
         if (phase_min > -1) {
             for (size_t i = 0; i < NStates; i++) {
                 for (size_t j = i+1; j < NStates-1; j++)
-                if (possible_phases[phase_min][i] != possible_phases[phase_min][j]) {
+                if (possibilities[phase_min][i] != possibilities[phase_min][j]) {
                     M1[i][j] = -M1[i][j];
                     M2[i][j] = -M2[i][j];
                 }
-                if (possible_phases[phase_min][i]) {
+                if (possibilities[phase_min][i]) {
                     M1[i][NStates-1] = -M1[i][NStates-1];
                     M2[i][NStates-1] = -M2[i][NStates-1];
                 }

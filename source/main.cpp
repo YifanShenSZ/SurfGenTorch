@@ -23,7 +23,7 @@ namespace pretrain {
 
 namespace train {
     void train(const std::string & Hd_in, const size_t & max_depth, const size_t & freeze,
-    const std::vector<std::string> & data_set, const double & zero_point,
+    const std::vector<std::string> & data_set, const double & zero_point, const double & weight,
     const std::vector<std::string> & chk, const size_t & chk_depth, const std::vector<double> & guess_diag,
     const std::string & opt = "TR", const size_t & epoch = 1000,
     const size_t & batch_size = 32, const double & learning_rate = 0.001);
@@ -83,11 +83,13 @@ int main(int argc, const char** argv) {
         std::string Hd_in = args.retrieve<std::string>("Hd_in");
         double zero_point = 0.0;
         if (args.gotArgument("zero_point")) zero_point = args.retrieve<double>("zero_point");
+        double weight = 1.0;
+        if (args.gotArgument("weight")) weight = args.retrieve<double>("weight");
         std::vector<double> guess_diag;
         if (args.gotArgument("guess_diag")) guess_diag = args.retrieve<std::vector<double>>("guess_diag");
         // Run
         train::train(Hd_in, max_depth, freeze,
-            data_set, zero_point,
+            data_set, zero_point, weight,
             checkpoint, chk_depth, guess_diag,
             optimizer, epoch, batch_size, learning_rate);
     }
@@ -125,6 +127,7 @@ argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
     parser.add_argument("--DimRed_in", 1, true, "an input file to define dimensionality reduction network");
     parser.add_argument("--Hd_in", 1, true, "an input file to define diabatic Hamiltonian (Hd)");
     parser.add_argument("-z","--zero_point", 1, true, "zero of potential energy, default = 0");
+    parser.add_argument("-w","--weight", 1, true, "Ethresh in weight adjustment, default = 1");
     parser.add_argument("-g","--guess_diag", '+', true, "initial guess of Hd diagonal, default = 0");
 
     parser.parse_args(argc, argv);

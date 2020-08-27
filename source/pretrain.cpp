@@ -14,24 +14,24 @@ namespace pretrain {
 //     1. Map the network parameters to vector c
 //     2. Compute residue and Jacobian
 namespace FLopt {
-    size_t OMP_NUM_THREADS;
+    int OMP_NUM_THREADS;
 
     // The dimensionality reduction network (each thread owns a copy)
     std::vector<std::shared_ptr<DimRed::Net>> nets;
     // Number of trainable parameters (length of parameter vector c)
     int Nc;
-    // parameter vector c
+    // Parameter vector c
     double * c;
 
     // The irreducible to pretrain
     size_t irred;
 
-    // data set
+    // Data set
     std::vector<AbInitio::geom *> GeomSet;
     // Number of least square equations
     int NEq;
-    // divide data set for parallelism
-    std::vector<size_t> chunk;
+    // Divide data set for parallelism
+    std::vector<size_t> chunk, start;
 
     // Push network parameters to c
     void p2c(const std::shared_ptr<DimRed::Net> & net) {
@@ -51,6 +51,14 @@ namespace FLopt {
             std::memcpy(p.data_ptr<double>(), &(c[count]), p.numel() * sizeof(double));
             count += p.numel();
         }
+    }
+
+    void net_zero_grad(const int & thread) {
+        for (auto & p : nets[thread]->parameters())
+        if (p.requires_grad() && p.grad().defined()) {
+            p.grad().detach_();
+            p.grad().zero_();
+        };
     }
 
     void loss(double & l, const double * c, const int & Nc) {
@@ -80,12 +88,7 @@ namespace FLopt {
                     nets[thread]->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
                     at::Reduction::Sum);
             }
-            for (auto & p : nets[thread]->parameters())
-            if (p.requires_grad())
-            if (p.grad().defined()) {
-                p.grad().detach_();
-                p.grad().zero_();
-            };
+            net_zero_grad(thread);
             loss[thread].backward();
         }
         // Push network gradients to g
@@ -118,12 +121,7 @@ namespace FLopt {
                     nets[thread]->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
                     at::Reduction::Sum);
             }
-            for (auto & p : nets[thread]->parameters())
-            if (p.requires_grad())
-            if (p.grad().defined()) {
-                p.grad().detach_();
-                p.grad().zero_();
-            };
+            net_zero_grad(thread);
             loss[thread].backward();
         }
         l = 0.0;
@@ -154,7 +152,7 @@ namespace FLopt {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
             c2p(nets[thread]);
-            size_t count = (chunk[thread] - chunk[0]) * SSAIC::NSAIC_per_irred[irred];
+            size_t count = start[thread];
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 at::Tensor r_tensor = nets[thread]->forward(GeomSet[data]->SAIgeom[irred]) - GeomSet[data]->SAIgeom[irred];
                 std::memcpy(&(r[count]), r_tensor.data_ptr<double>(), r_tensor.numel() * sizeof(double));
@@ -166,23 +164,18 @@ namespace FLopt {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
             c2p(nets[thread]);
-            size_t column = (chunk[thread] - chunk[0]) * SSAIC::NSAIC_per_irred[irred];
+            size_t column = start[thread];
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 at::Tensor r_tensor = nets[thread]->forward(GeomSet[data]->SAIgeom[irred]);
-                for (size_t el = 0; el < r_tensor.size(0); el++) {
-                    for (auto & p : nets[thread]->parameters())
-                    if (p.requires_grad())
-                    if (p.grad().defined()) {
-                        p.grad().detach_();
-                        p.grad().zero_();
-                    };
+                for (size_t el = 0; el < r_tensor.numel(); el++) {
+                    net_zero_grad(thread);
                     r_tensor[el].backward({}, true);
                     size_t row = 0;
                     for (auto & p : nets[thread]->parameters())
                     if (p.requires_grad()) {
                         double * pg = p.grad().data_ptr<double>();
                         for (size_t i = 0; i < p.grad().numel(); i++) {
-                            JT[row*NEq+column] = pg[i];
+                            JT[row * NEq + column] = pg[i];
                             row++;
                         }
                     }
@@ -202,7 +195,7 @@ namespace FLopt {
 
         nets.resize(OMP_NUM_THREADS);
         nets[0] = net_;
-        for (size_t i = 1; i < OMP_NUM_THREADS; i++) {
+        for (int i = 1; i < OMP_NUM_THREADS; i++) {
             nets[i] = std::make_shared<DimRed::Net>(SSAIC::NSAIC_per_irred[irred], nets[0]->fc.size());
             nets[i]->to(torch::kFloat64);
             nets[i]->copy(nets[0]);
@@ -216,9 +209,15 @@ namespace FLopt {
         size_t NData = OMP_NUM_THREADS * (GeomSet.size() / OMP_NUM_THREADS);
         std::cout << "For parallelism, the number of data in use = " << NData << '\n';
         NEq = SSAIC::NSAIC_per_irred[irred] * NData;
+        std::cout << "These data correspond to " << NEq << " least square equations\n";
         chunk.resize(OMP_NUM_THREADS);
+        start.resize(OMP_NUM_THREADS);
         chunk[0] = GeomSet.size() / OMP_NUM_THREADS;
-        for (size_t i = 1; i < OMP_NUM_THREADS; i++) chunk[i] = chunk[i-1] + chunk[0];
+        start[0] = 0;
+        for (int i = 1; i < OMP_NUM_THREADS; i++) {
+            chunk[i] = chunk[i-1] + chunk[0];
+            start[i] = chunk[i-1] * SSAIC::NSAIC_per_irred[irred];
+        }
     }
 
     void optimize(const std::string & opt, const size_t & epoch) {
@@ -292,8 +291,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
             // Create optimizer
             torch::optim::SGD optimizer(net->parameters(),
                 torch::optim::SGDOptions(learning_rate)
-                .momentum(0.9)
-                .nesterov(true));
+                .momentum(0.9).nesterov(true));
             if (chk.size() > 1 && max_depth == chk_depth) torch::load(optimizer, chk[1]);
             // Start training
             size_t follow = epoch / 10;

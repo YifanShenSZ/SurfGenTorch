@@ -14,8 +14,6 @@ In addition, geometries can be extracted alone to feed pretraining
 
 namespace AbInitio {
 
-const double DegThresh = 0.0001;
-
 class GeomLoader { public:
     at::Tensor cartgeom, intgeom;
 
@@ -90,7 +88,8 @@ template <class T> class DataSet : public torch::data::datasets::Dataset<DataSet
 DataSet<geom> * read_GeomSet(const std::vector<std::string> & data_set);
 
 std::tuple<DataSet<RegData> *, DataSet<DegData> *> read_DataSet(
-const std::vector<std::string> & data_set, const double & zero_point = 0.0);
+const std::vector<std::string> & data_set,
+const double & zero_point = 0.0, const double & weight = 1.0);
 
 } // namespace AbInitio
 

@@ -50,6 +50,7 @@ void Net::copy(const std::shared_ptr<Net> & net) {
         std::memcpy((*fc[i])->weight.data_ptr<double>(),
                 (*(net->fc[i]))->weight.data_ptr<double>(),
                 (*fc[i])->weight.numel() * sizeof(double));
+        if ((*fc[i])->bias.defined())
         std::memcpy((*fc[i])->bias.data_ptr<double>(),
                 (*(net->fc[i]))->bias.data_ptr<double>(),
                 (*fc[i])->bias.numel() * sizeof(double));
@@ -154,9 +155,9 @@ void define_Hd(const std::string & Hd_in) {
         // Symmetry of Hd elements
         std::getline(ifs, line);
         CL::utility::CreateArray(Hd_symm, NStates, NStates);
-        for (size_t i = 0; i < NStates; i++) {
+        for (int i = 0; i < NStates; i++) {
             std::getline(ifs, line); CL::utility::split(line, strs);
-            for (size_t j = 0; j < NStates; j++)
+            for (int j = 0; j < NStates; j++)
             Hd_symm[i][j] = std::stoul(strs[j]) - 1;
         }
         // Input layer specification file
@@ -174,8 +175,8 @@ void define_Hd(const std::string & Hd_in) {
     ifs.close();
     // Number of irreducible representations
     NIrred = 0;
-    for (size_t i = 0; i < NStates; i++)
-    for (size_t j = 0; j < NStates; j++)
+    for (int i = 0; i < NStates; i++)
+    for (int j = 0; j < NStates; j++)
     NIrred = Hd_symm[i][j] > NIrred ? Hd_symm[i][j] : NIrred;
     NIrred++;
     // Polynomial numbering rule
@@ -183,9 +184,9 @@ void define_Hd(const std::string & Hd_in) {
     // Initialize networks
     nets.resize(NStates);
     size_t index = 0;
-    for (size_t i = 0; i < NStates; i++) {
+    for (int i = 0; i < NStates; i++) {
         nets[i].resize(NStates);
-        for (size_t j = i; j < NStates; j++) {
+        for (int j = i; j < NStates; j++) {
             nets[i][j] = std::make_shared<Net>(NInput_per_irred[Hd_symm[i][j]],
                 Hd::Hd_symm[i][j] == 0);
             nets[i][j]->to(torch::kFloat64);
@@ -201,8 +202,8 @@ at::Tensor compute_Hd(const std::vector<at::Tensor> & x) {
     std::vector<at::Tensor> input_layer = input::input_layer(x);
     // Compute upper triangle
     at::Tensor Hd = x[0].new_empty({NStates, NStates});
-    for (size_t i = 0; i < NStates; i++)
-    for (size_t j = i; j < NStates; j++)
+    for (int i = 0; i < NStates; i++)
+    for (int j = i; j < NStates; j++)
     Hd[i][j] = nets[i][j]->forward(input_layer[Hd_symm[i][j]]);
     return Hd;
 }
@@ -210,8 +211,8 @@ at::Tensor compute_Hd(const std::vector<at::Tensor> & x) {
 at::Tensor compute_Hd_from_input_layer(const std::vector<at::Tensor> & input_layer) {
     // Compute upper triangle
     at::Tensor Hd = input_layer[0].new_empty({NStates, NStates});
-    for (size_t i = 0; i < NStates; i++)
-    for (size_t j = i; j < NStates; j++)
+    for (int i = 0; i < NStates; i++)
+    for (int j = i; j < NStates; j++)
     Hd[i][j] = nets[i][j]->forward(input_layer[Hd_symm[i][j]]);
     return Hd;
 }
