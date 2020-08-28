@@ -46,8 +46,8 @@ template <class T> class xyz_mass : public xyz<T> {
         xyz_mass(const std::string & xyzfile, const std::string & massfile, bool AtomicUnit = false)
         : xyz<T>(xyzfile, AtomicUnit) {
             std::ifstream ifs; ifs.open(massfile);
-                mass_.resize(NAtoms_);
-                for(size_t i = 0; i < NAtoms_; i++) {
+                mass_.resize(xyz<T>::NAtoms_);
+                for(size_t i = 0; i < xyz<T>::NAtoms_; i++) {
                     ifs >> mass_[i];
                 }
             ifs.close();
@@ -59,10 +59,10 @@ template <class T> class xyz_mass : public xyz<T> {
         xyz_mass(const std::string & geomfile, bool AtomicUnit = false) {
             xyz<T>::NAtoms_ = utility::NLines(geomfile);
             std::ifstream ifs; ifs.open(geomfile);
-                xyz<T>::symbol_.resize(NAtoms_);
-                xyz<T>::geom_.resize(3*NAtoms_);
-                mass_.resize(NAtoms_);
-                for(size_t i = 0; i < NAtoms_; i++) {
+                xyz<T>::symbol_.resize(xyz<T>::NAtoms_);
+                xyz<T>::geom_.resize(3*xyz<T>::NAtoms_);
+                mass_.resize(xyz<T>::NAtoms_);
+                for(size_t i = 0; i < xyz<T>::NAtoms_; i++) {
                     ifs >> xyz<T>::symbol_[i];
                     T temp; ifs >> temp;
                     ifs >> xyz<T>::geom_[3*i]  ;
