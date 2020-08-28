@@ -18,23 +18,17 @@ namespace FLopt {
 
     // The dimensionality reduction network (each thread owns a copy)
     std::vector<std::shared_ptr<DimRed::Net>> nets;
-    // Number of trainable parameters (length of parameter vector c)
-    int Nc;
-    // Parameter vector c
-    double * c;
 
     // The irreducible to pretrain
     size_t irred;
 
     // Data set
     std::vector<AbInitio::geom *> GeomSet;
-    // Number of least square equations
-    int NEq;
     // Divide data set for parallelism
     std::vector<size_t> chunk, start;
 
-    // Push network parameters to c
-    void p2c(const std::shared_ptr<DimRed::Net> & net) {
+    // Push network parameters to parameter vector c
+    void p2c(const std::shared_ptr<DimRed::Net> & net, double * c) {
         size_t count = 0;
         for (auto & p : net->parameters())
         if (p.requires_grad()) {
@@ -42,8 +36,8 @@ namespace FLopt {
             count += p.numel();
         }
     }
-    // Push c to network parameters
-    void c2p(const std::shared_ptr<DimRed::Net> & net) {
+    // The other way round
+    void c2p(const double * c, const std::shared_ptr<DimRed::Net> & net) {
         torch::NoGradGuard no_grad;
         size_t count = 0;
         for (auto & p : net->parameters())
@@ -66,7 +60,7 @@ namespace FLopt {
         std::vector<at::Tensor> loss(OMP_NUM_THREADS);
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(nets[thread]);
+            c2p(c, nets[thread]);
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
@@ -81,7 +75,7 @@ namespace FLopt {
         std::vector<at::Tensor> loss(OMP_NUM_THREADS);
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(nets[thread]);
+            c2p(c, nets[thread]);
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
@@ -100,7 +94,7 @@ namespace FLopt {
         }
         for (int thread = 1; thread < OMP_NUM_THREADS; thread++) {
             size_t count = 0;
-            for (auto & p : nets[0]->parameters())
+            for (auto & p : nets[thread]->parameters())
             if (p.requires_grad()) {
                 double * pg = p.grad().data_ptr<double>();
                 for (size_t i = 0; i < p.grad().numel(); i++) {
@@ -114,7 +108,7 @@ namespace FLopt {
         std::vector<at::Tensor> loss(OMP_NUM_THREADS);
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(nets[thread]);
+            c2p(c, nets[thread]);
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
@@ -135,7 +129,7 @@ namespace FLopt {
         }
         for (int thread = 1; thread < OMP_NUM_THREADS; thread++) {
             size_t count = 0;
-            for (auto & p : nets[0]->parameters())
+            for (auto & p : nets[thread]->parameters())
             if (p.requires_grad()) {
                 double * pg = p.grad().data_ptr<double>();
                 for (size_t i = 0; i < p.grad().numel(); i++) {
@@ -151,7 +145,7 @@ namespace FLopt {
         torch::NoGradGuard no_grad;
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(nets[thread]);
+            c2p(c, nets[thread]);
             size_t count = start[thread];
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 at::Tensor r_tensor = nets[thread]->forward(GeomSet[data]->SAIgeom[irred]) - GeomSet[data]->SAIgeom[irred];
@@ -163,7 +157,7 @@ namespace FLopt {
     void Jacobian(double * JT, const double * c, const int & NEq, const int & Nc) {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(nets[thread]);
+            c2p(c, nets[thread]);
             size_t column = start[thread];
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 at::Tensor r_tensor = nets[thread]->forward(GeomSet[data]->SAIgeom[irred]);
@@ -201,15 +195,10 @@ namespace FLopt {
             nets[i]->copy(nets[0]);
             nets[i]->freeze(freeze_);
         }
-        Nc = CL::TS::NParameters(nets[0]->parameters());
-        c = new double[Nc];
-        p2c(nets[0]);
 
         GeomSet = GeomSet_;
-        size_t NData = OMP_NUM_THREADS * (GeomSet.size() / OMP_NUM_THREADS);
-        std::cout << "For parallelism, the number of data in use = " << NData << '\n';
-        NEq = SSAIC::NSAIC_per_irred[irred] * NData;
-        std::cout << "These data correspond to " << NEq << " least square equations\n";
+        std::cout << "For parallelism, the number of data in use = "
+                  << OMP_NUM_THREADS * (GeomSet.size() / OMP_NUM_THREADS) << '\n';
         chunk.resize(OMP_NUM_THREADS);
         start.resize(OMP_NUM_THREADS);
         chunk[0] = GeomSet.size() / OMP_NUM_THREADS;
@@ -221,12 +210,21 @@ namespace FLopt {
     }
 
     void optimize(const std::string & opt, const size_t & epoch) {
+        // Initialize
+        int Nc = CL::TS::NParameters(nets[0]->parameters());
+        std::cout << "There are " << Nc << " parameters to train\n";
+        double * c = new double[Nc];
+        p2c(nets[0], c);
+        int NEq = SSAIC::NSAIC_per_irred[irred] * OMP_NUM_THREADS * (GeomSet.size() / OMP_NUM_THREADS);
+        std::cout << "The data set corresponds to " << NEq << " least square equations" << std::endl;
+        // Train
         if (opt == "CG") {
             FL::NO::ConjugateGradient(loss, grad, loss_grad, c, Nc, "DY", false, true, epoch);
         } else {
             FL::NO::TrustRegion(residue, Jacobian, c, NEq, Nc, true, epoch);
         }
-        c2p(nets[0]);
+        // Finish
+        c2p(c, nets[0]);
         delete [] c;
     }
 } // namespace FLopt
@@ -252,10 +250,13 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
     net->to(torch::kFloat64);
     if (! chk.empty()) net->warmstart(chk[0], chk_depth);
     net->freeze(freeze);
-    std::cout << "Number of trainable parameters = " << CL::TS::NParameters(net->parameters()) << '\n';
+    std::cout << "Number of trainable network parameters = " << CL::TS::NParameters(net->parameters()) << '\n';
     // Read geometry set
     auto * GeomSet = AbInitio::read_GeomSet(data_set);
     std::cout << "Number of geometries = " << GeomSet->size_int() << '\n';
+    std::cout << "The initial guess gives:\n";
+    std::cout << "RMSD = " << RMSD(irred, net, GeomSet->example()) << '\n';
+    std::cout << std::endl;
     if (opt == "Adam" || opt == "SGD") {
         // Create geometry set loader
         auto geom_loader = torch::data::make_data_loader(* GeomSet,

@@ -91,7 +91,6 @@ void Net::warmstart(const std::string & chk, const size_t & chk_depth) {
     warm_net.reset();
 }
 void Net::freeze(const size_t & freeze) {
-    assert(("All layers are frozen, so nothing to train", freeze < fc.size()));
     for (size_t i = 0; i < freeze; i++) {
         (*fc    [i])->weight.set_requires_grad(false);
         (*fc_inv[i])->weight.set_requires_grad(false);

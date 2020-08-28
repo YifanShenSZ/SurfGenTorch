@@ -38,33 +38,46 @@ Net::~Net() {}
 at::Tensor Net::forward(const at::Tensor & x) {
     at::Tensor y = x.clone();
     for (auto & layer : fc) {
-        y = (*layer)->forward(y);
         y = torch::tanh(y);
+        y = (*layer)->forward(y);
     }
     return y[0];
 }
 // For training
 void Net::copy(const std::shared_ptr<Net> & net) {
     torch::NoGradGuard no_grad;
-    for (size_t i = 0; i < (fc.size() < net->fc.size() ? fc.size() : net->fc.size()); i++) {
-        std::memcpy((*fc[i])->weight.data_ptr<double>(),
-                (*(net->fc[i]))->weight.data_ptr<double>(),
-                (*fc[i])->weight.numel() * sizeof(double));
-        if ((*fc[i])->bias.defined())
-        std::memcpy((*fc[i])->bias.data_ptr<double>(),
-                (*(net->fc[i]))->bias.data_ptr<double>(),
-                (*fc[i])->bias.numel() * sizeof(double));
+    if (fc.size() == net->fc.size()) {
+        for (size_t i = 0; i < fc.size(); i++) {
+            std::memcpy((*fc[i])->weight.data_ptr<double>(),
+                    (*(net->fc[i]))->weight.data_ptr<double>(),
+                    (*fc[i])->weight.numel() * sizeof(double));
+            if ((*fc[i])->options.bias())
+            std::memcpy((*fc[i])->bias.data_ptr<double>(),
+                    (*(net->fc[i]))->bias.data_ptr<double>(),
+                    (*fc[i])->bias.numel() * sizeof(double));
+        }
+    }
+    else {
+        // The final layer has different shape
+        for (size_t i = 0; i < (fc.size() < net->fc.size() ? fc.size() : net->fc.size()) - 1; i++) {
+            std::memcpy((*fc[i])->weight.data_ptr<double>(),
+                    (*(net->fc[i]))->weight.data_ptr<double>(),
+                    (*fc[i])->weight.numel() * sizeof(double));
+            if ((*fc[i])->options.bias())
+            std::memcpy((*fc[i])->bias.data_ptr<double>(),
+                    (*(net->fc[i]))->bias.data_ptr<double>(),
+                    (*fc[i])->bias.numel() * sizeof(double));
+        }
     }
 }
 void Net::warmstart(const std::string & chk, const size_t & chk_depth) {
-    auto warm_net = std::make_shared<Net>((*fc[0])->options.in_features(), chk_depth);
+    auto warm_net = std::make_shared<Net>((*fc[0])->options.in_features(), (*fc[0])->options.bias(), chk_depth);
     warm_net->to(torch::kFloat64);
     torch::load(warm_net, chk);
     this->copy(warm_net);
     warm_net.reset();
 }
 void Net::freeze(const size_t & freeze) {
-    assert(("All layers are frozen, so nothing to train", freeze < fc.size()));
     for (size_t i = 0; i < freeze; i++) {
         (*fc[i])->weight.set_requires_grad(false);
         (*fc[i])->bias.set_requires_grad(false);
