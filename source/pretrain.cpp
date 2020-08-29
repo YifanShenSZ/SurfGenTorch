@@ -60,11 +60,12 @@ namespace FLopt {
         std::vector<at::Tensor> loss(OMP_NUM_THREADS);
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(c, nets[thread]);
+            auto & net = nets[thread];
+            c2p(c, net);
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
-                    nets[thread]->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
+                    net->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
                     at::Reduction::Sum);
             }
         }
@@ -147,10 +148,11 @@ namespace FLopt {
         torch::NoGradGuard no_grad;
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(c, nets[thread]);
+            auto & net = nets[thread];
+            c2p(c, net);
             size_t count = start[thread];
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
-                at::Tensor r_tensor = nets[thread]->forward(GeomSet[data]->SAIgeom[irred]) - GeomSet[data]->SAIgeom[irred];
+                at::Tensor r_tensor = net->forward(GeomSet[data]->SAIgeom[irred]) - GeomSet[data]->SAIgeom[irred];
                 std::memcpy(&(r[count]), r_tensor.data_ptr<double>(), r_tensor.numel() * sizeof(double));
                 count += r_tensor.numel();
             }

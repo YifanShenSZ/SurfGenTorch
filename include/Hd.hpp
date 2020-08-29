@@ -45,8 +45,6 @@ void define_Hd(const std::string & Hd_in);
 
 at::Tensor compute_Hd(const std::vector<at::Tensor> & x);
 
-at::Tensor compute_Hd_from_input_layer(const std::vector<at::Tensor> & input_layer);
-
 } // namespace Hd
 
 #endif

@@ -37,10 +37,13 @@ Net::Net(const size_t & init_dim, const bool & totally_symmetric, const size_t &
 Net::~Net() {}
 at::Tensor Net::forward(const at::Tensor & x) {
     at::Tensor y = x.clone();
-    for (auto & layer : fc) {
+    // The starting layers gradually reduce dimensionality
+    for (size_t i = 0; i < fc.size() - 1; i++) {
+        y = (*fc[i])->forward(y);
         y = torch::tanh(y);
-        y = (*layer)->forward(y);
     }
+    // The final layer reduces to scalar
+    y = (*fc[fc.size() - 1])->forward(y);
     return y[0];
 }
 // For training
@@ -215,15 +218,6 @@ at::Tensor compute_Hd(const std::vector<at::Tensor> & x) {
     std::vector<at::Tensor> input_layer = input::input_layer(x);
     // Compute upper triangle
     at::Tensor Hd = x[0].new_empty({NStates, NStates});
-    for (int i = 0; i < NStates; i++)
-    for (int j = i; j < NStates; j++)
-    Hd[i][j] = nets[i][j]->forward(input_layer[Hd_symm[i][j]]);
-    return Hd;
-}
-
-at::Tensor compute_Hd_from_input_layer(const std::vector<at::Tensor> & input_layer) {
-    // Compute upper triangle
-    at::Tensor Hd = input_layer[0].new_empty({NStates, NStates});
     for (int i = 0; i < NStates; i++)
     for (int j = i; j < NStates; j++)
     Hd[i][j] = nets[i][j]->forward(input_layer[Hd_symm[i][j]]);

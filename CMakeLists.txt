@@ -1,6 +1,4 @@
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
-set(CMAKE_C_COMPILER gcc)
-set(CMAKE_CXX_COMPILER g++)
 
 project(SurfGenTorch)
 set(CMAKE_CXX_STANDARD 14)

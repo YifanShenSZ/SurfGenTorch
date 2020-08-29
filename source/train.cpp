@@ -77,6 +77,25 @@ const std::vector<std::string> & chk, const size_t & chk_depth, const std::vecto
     }
 }
 
+// Compute Hd from input layer determined in AbInitio
+at::Tensor compute_Hd(const std::vector<at::Tensor> & input_layer) {
+    // Compute upper triangle
+    at::Tensor Hd = input_layer[0].new_empty({Hd::NStates, Hd::NStates});
+    for (int i = 0; i < Hd::NStates; i++)
+    for (int j = i; j < Hd::NStates; j++)
+    Hd[i][j] = Hd::nets[i][j]->forward(input_layer[Hd::Hd_symm[i][j]]);
+    return Hd;
+}
+at::Tensor compute_Hd(const std::vector<at::Tensor> & input_layer,
+const std::vector<std::vector<std::shared_ptr<Hd::Net>>> & nets) {
+    // Compute upper triangle
+    at::Tensor Hd = input_layer[0].new_empty({Hd::NStates, Hd::NStates});
+    for (int i = 0; i < Hd::NStates; i++)
+    for (int j = i; j < Hd::NStates; j++)
+    Hd[i][j] = nets[i][j]->forward(input_layer[Hd::Hd_symm[i][j]]);
+    return Hd;
+}
+
 void set_unit(const std::vector<AbInitio::RegData *> & RegSet) {
     double MaxEnergy = 0.0, MaxGrad = 0.0;
     for (auto & data : RegSet) {
@@ -99,7 +118,7 @@ namespace FLopt {
     int OMP_NUM_THREADS;
 
     // Hd element networks (each thread owns a copy)
-    std::vector<std::vector<std::vector<std::shared_ptr<Hd::Net>>>> nets;
+    std::vector<std::vector<std::vector<std::shared_ptr<Hd::Net>>>> netss;
 
     // Data set
     std::vector<AbInitio::RegData *> RegSet;
@@ -132,11 +151,12 @@ namespace FLopt {
     }
 
     // Push the network parameter gradient to Jacobian^T 
-    void dp2JT(const int & thread, double * JT, const int & NEq, const size_t & column) {
+    void dp2JT(const std::vector<std::vector<std::shared_ptr<Hd::Net>>> & nets,
+    double * JT, const int & NEq, const size_t & column) {
         size_t row = 0;
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        for (auto & p : nets[thread][i][j]->parameters())
+        for (auto & p : nets[i][j]->parameters())
         if (p.requires_grad()) {
             double * pg = p.grad().data_ptr<double>();
             for (size_t i = 0; i < p.grad().numel(); i++) {
@@ -146,89 +166,82 @@ namespace FLopt {
         }
     }
 
-    void net_zero_grad(const int & thread) {
+    void net_zero_grad(const std::vector<std::vector<std::shared_ptr<Hd::Net>>> & nets) {
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        for (auto & p : nets[thread][i][j]->parameters())
+        for (auto & p : nets[i][j]->parameters())
         if (p.requires_grad() && p.grad().defined()) {
             p.grad().detach_();
             p.grad().zero_();
         };
     }
 
-    // Compute Hd from the nets in this namespace
-    at::Tensor compute_Hd(const std::vector<at::Tensor> & input_layer, const int & thread) {
-        // Compute upper triangle
-        at::Tensor Hd = input_layer[0].new_empty({Hd::NStates, Hd::NStates});
-        for (int i = 0; i < Hd::NStates; i++)
-        for (int j = i; j < Hd::NStates; j++)
-        Hd[i][j] = nets[thread][i][j]->forward(input_layer[Hd::Hd_symm[i][j]]);
-        return Hd;
-    }
-
     void loss(double & l, const double * c, const int & Nc) {
         std::vector<at::Tensor> loss(OMP_NUM_THREADS);
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(c, nets[thread]);
+            auto & nets = netss[thread];
+            c2p(c, nets);
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
-            for (size_t data = RegChunk[thread] - RegChunk[0]; data < RegChunk[thread]; data++) {
+            for (size_t idata = RegChunk[thread] - RegChunk[0]; idata < RegChunk[thread]; idata++) {
+                auto & data = RegSet[idata];
                 // Compute diabatic quantity
-                at::Tensor H = compute_Hd(RegSet[data]->input_layer, thread);
-                at::Tensor dH = H.new_empty(RegSet[data]->dH.sizes());
+                at::Tensor H = compute_Hd(data->input_layer, nets);
+                at::Tensor dH = H.new_empty(data->dH.sizes());
                 for (int i = 0; i < Hd::NStates; i++)
                 for (int j = i; j < Hd::NStates; j++) {
-                    if (RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
-                        RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
-                        RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
+                    if (data->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
                     };
                     H[i][j].backward({}, true);
-                    dH[i][j] = RegSet[data]->JT[Hd::Hd_symm[i][j]].mv(RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad());
+                    dH[i][j] = data->JT[Hd::Hd_symm[i][j]].mv(data->input_layer[Hd::Hd_symm[i][j]].grad());
                 }
                 // Transform to adiabatic representation
                 at::Tensor energy, state;
                 std::tie(energy, state) = H.symeig(true, true);
                 dH = CL::TS::LA::UT_A3_U(dH, state);
                 // Slice to the number of states in data
-                int data_NStates = RegSet[data]->energy.size(0);
+                int data_NStates = data->energy.size(0);
                 if (Hd::NStates != data_NStates) {
                     energy = energy.slice(0, 0, data_NStates+1);
                     dH = dH.slice(0, 0, data_NStates+1);
                     dH = dH.slice(1, 0, data_NStates+1);
                 }
                 // Determine phase difference of eigenvectors
-                CL::TS::chemistry::fix(dH, RegSet[data]->dH);
+                CL::TS::chemistry::fix(dH, data->dH);
                 // dH loss
                 at::Tensor loss_data = H.new_zeros({});
                 for (int i = 0; i < data_NStates; i++)
                 for (int j = i+1; j < data_NStates; j++)
-                loss_data += (dH[i][j] - RegSet[data]->dH[i][j]).pow(2).sum();
+                loss_data += (dH[i][j] - data->dH[i][j]).pow(2).sum();
                 loss_data *= 2.0;
                 for (int i = 0; i < data_NStates; i++)
-                loss_data += (dH[i][i] - RegSet[data]->dH[i][i]).pow(2).sum();
+                loss_data += (dH[i][i] - data->dH[i][i]).pow(2).sum();
                 // + energy loss
-                loss_data += unit_square * torch::mse_loss(energy, RegSet[data]->energy, at::Reduction::Sum);
-                loss[thread] += RegSet[data]->weight * loss_data;
+                loss_data += unit_square * torch::mse_loss(energy, data->energy, at::Reduction::Sum);
+                loss[thread] += data->weight * loss_data;
             }
-            for (size_t data = DegChunk[thread] - DegChunk[0]; data < DegChunk[thread]; data++) {
+            for (size_t idata = DegChunk[thread] - DegChunk[0]; idata < DegChunk[thread]; idata++) {
+                auto & data = DegSet[idata];
                 // Compute diabatic quantity
-                at::Tensor H = compute_Hd(DegSet[data]->input_layer, thread);
-                at::Tensor dH = H.new_empty(DegSet[data]->dH.sizes());
+                at::Tensor H = compute_Hd(data->input_layer, nets);
+                at::Tensor dH = H.new_empty(data->dH.sizes());
                 for (int i = 0; i < Hd::NStates; i++)
                 for (int j = i; j < Hd::NStates; j++) {
-                    if (DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
-                        DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
-                        DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
+                    if (data->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
                     };
                     H[i][j].backward({}, true);
-                    dH[i][j] = DegSet[data]->JT[Hd::Hd_symm[i][j]].mv(DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad());
+                    dH[i][j] = data->JT[Hd::Hd_symm[i][j]].mv(data->input_layer[Hd::Hd_symm[i][j]].grad());
                 }
                 // Transform to adiabatic representation
                 at::Tensor energy, state;
                 std::tie(energy, state) = H.symeig(true, true);
                 dH = CL::TS::LA::UT_A3_U(dH, state);
                 // Slice to the number of states in data
-                int data_NStates = DegSet[data]->H.size(0);
+                int data_NStates = data->H.size(0);
                 if (Hd::NStates != data_NStates) {
                     energy = energy.slice(0, 0, data_NStates+1);
                     dH = dH.slice(0, 0, data_NStates+1);
@@ -242,17 +255,17 @@ namespace FLopt {
                 H = dHdH.mm(energy.diag().mm(eigvec));
                 dH = CL::TS::LA::UT_A3_U(dHdH, dH, eigvec);
                 // Determine phase difference of eigenvectors
-                CL::TS::chemistry::fix(dH, DegSet[data]->dH);
+                CL::TS::chemistry::fix(dH, data->dH);
                 // H and dH loss
                 at::Tensor loss_data = H.new_zeros({});
                 for (int i = 0; i < data_NStates; i++)
                 for (int j = i+1; j < data_NStates; j++)
-                loss_data += unit_square * (H[i][j] - DegSet[data]->H[i][j]).pow(2)
-                        + (dH[i][j] - DegSet[data]->dH[i][j]).pow(2).sum();
+                loss_data += unit_square * (H[i][j] - data->H[i][j]).pow(2)
+                        + (dH[i][j] - data->dH[i][j]).pow(2).sum();
                 loss_data *= 2.0;
                 for (int i = 0; i < data_NStates; i++)
-                loss_data += unit_square * (H[i][i] - DegSet[data]->H[i][i]).pow(2)
-                        + (dH[i][i] - DegSet[data]->dH[i][i]).pow(2).sum();
+                loss_data += unit_square * (H[i][i] - data->H[i][i]).pow(2)
+                        + (dH[i][i] - data->dH[i][i]).pow(2).sum();
                 loss[thread] += loss_data;
             }
         }
@@ -263,65 +276,68 @@ namespace FLopt {
         std::vector<at::Tensor> loss(OMP_NUM_THREADS);
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(c, nets[thread]);
+            auto & nets = netss[thread];
+            c2p(c, nets);
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
-            for (size_t data = RegChunk[thread] - RegChunk[0]; data < RegChunk[thread]; data++) {
+            for (size_t idata = RegChunk[thread] - RegChunk[0]; idata < RegChunk[thread]; idata++) {
+                auto & data = RegSet[idata];
                 // Compute diabatic quantity
-                at::Tensor H = compute_Hd(RegSet[data]->input_layer, thread);
-                at::Tensor dH = H.new_empty(RegSet[data]->dH.sizes());
+                at::Tensor H = compute_Hd(data->input_layer, nets);
+                at::Tensor dH = H.new_empty(data->dH.sizes());
                 for (int i = 0; i < Hd::NStates; i++)
                 for (int j = i; j < Hd::NStates; j++) {
-                    if (RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
-                        RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
-                        RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
+                    if (data->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
                     };
                     H[i][j].backward({}, true);
-                    dH[i][j] = RegSet[data]->JT[Hd::Hd_symm[i][j]].mv(RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad());
+                    dH[i][j] = data->JT[Hd::Hd_symm[i][j]].mv(data->input_layer[Hd::Hd_symm[i][j]].grad());
                 }
                 // Transform to adiabatic representation
                 at::Tensor energy, state;
                 std::tie(energy, state) = H.symeig(true, true);
                 dH = CL::TS::LA::UT_A3_U(dH, state);
                 // Slice to the number of states in data
-                int data_NStates = RegSet[data]->energy.size(0);
+                int data_NStates = data->energy.size(0);
                 if (Hd::NStates != data_NStates) {
                     energy = energy.slice(0, 0, data_NStates+1);
                     dH = dH.slice(0, 0, data_NStates+1);
                     dH = dH.slice(1, 0, data_NStates+1);
                 }
                 // Determine phase difference of eigenvectors
-                CL::TS::chemistry::fix(dH, RegSet[data]->dH);
+                CL::TS::chemistry::fix(dH, data->dH);
                 // dH loss
                 at::Tensor loss_data = H.new_zeros({});
                 for (int i = 0; i < data_NStates; i++)
                 for (int j = i+1; j < data_NStates; j++)
-                loss_data += (dH[i][j] - RegSet[data]->dH[i][j]).pow(2).sum();
+                loss_data += (dH[i][j] - data->dH[i][j]).pow(2).sum();
                 loss_data *= 2.0;
                 for (int i = 0; i < data_NStates; i++)
-                loss_data += (dH[i][i] - RegSet[data]->dH[i][i]).pow(2).sum();
+                loss_data += (dH[i][i] - data->dH[i][i]).pow(2).sum();
                 // + energy loss
-                loss_data += unit_square * torch::mse_loss(energy, RegSet[data]->energy, at::Reduction::Sum);
-                loss[thread] += RegSet[data]->weight * loss_data;
+                loss_data += unit_square * torch::mse_loss(energy, data->energy, at::Reduction::Sum);
+                loss[thread] += data->weight * loss_data;
             }
-            for (size_t data = DegChunk[thread] - DegChunk[0]; data < DegChunk[thread]; data++) {
+            for (size_t idata = DegChunk[thread] - DegChunk[0]; idata < DegChunk[thread]; idata++) {
+                auto & data = DegSet[idata];
                 // Compute diabatic quantity
-                at::Tensor H = compute_Hd(DegSet[data]->input_layer, thread);
-                at::Tensor dH = H.new_empty(DegSet[data]->dH.sizes());
+                at::Tensor H = compute_Hd(data->input_layer, nets);
+                at::Tensor dH = H.new_empty(data->dH.sizes());
                 for (int i = 0; i < Hd::NStates; i++)
                 for (int j = i; j < Hd::NStates; j++) {
-                    if (DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
-                        DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
-                        DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
+                    if (data->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
                     };
                     H[i][j].backward({}, true);
-                    dH[i][j] = DegSet[data]->JT[Hd::Hd_symm[i][j]].mv(DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad());
+                    dH[i][j] = data->JT[Hd::Hd_symm[i][j]].mv(data->input_layer[Hd::Hd_symm[i][j]].grad());
                 }
                 // Transform to adiabatic representation
                 at::Tensor energy, state;
                 std::tie(energy, state) = H.symeig(true, true);
                 dH = CL::TS::LA::UT_A3_U(dH, state);
                 // Slice to the number of states in data
-                int data_NStates = DegSet[data]->H.size(0);
+                int data_NStates = data->H.size(0);
                 if (Hd::NStates != data_NStates) {
                     energy = energy.slice(0, 0, data_NStates+1);
                     dH = dH.slice(0, 0, data_NStates+1);
@@ -335,27 +351,27 @@ namespace FLopt {
                 H = dHdH.mm(energy.diag().mm(eigvec));
                 dH = CL::TS::LA::UT_A3_U(dHdH, dH, eigvec);
                 // Determine phase difference of eigenvectors
-                CL::TS::chemistry::fix(dH, DegSet[data]->dH);
+                CL::TS::chemistry::fix(dH, data->dH);
                 // H and dH loss
                 at::Tensor loss_data = H.new_zeros({});
                 for (int i = 0; i < data_NStates; i++)
                 for (int j = i+1; j < data_NStates; j++)
-                loss_data += unit_square * (H[i][j] - DegSet[data]->H[i][j]).pow(2)
-                        + (dH[i][j] - DegSet[data]->dH[i][j]).pow(2).sum();
+                loss_data += unit_square * (H[i][j] - data->H[i][j]).pow(2)
+                        + (dH[i][j] - data->dH[i][j]).pow(2).sum();
                 loss_data *= 2.0;
                 for (int i = 0; i < data_NStates; i++)
-                loss_data += unit_square * (H[i][i] - DegSet[data]->H[i][i]).pow(2)
-                        + (dH[i][i] - DegSet[data]->dH[i][i]).pow(2).sum();
+                loss_data += unit_square * (H[i][i] - data->H[i][i]).pow(2)
+                        + (dH[i][i] - data->dH[i][i]).pow(2).sum();
                 loss[thread] += loss_data;
             }
-            net_zero_grad(thread);
+            net_zero_grad(nets);
             loss[thread].backward();
         }
         // Push network gradients to g
         size_t count = 0;
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        for (auto & p : nets[0][i][j]->parameters())
+        for (auto & p : netss[0][i][j]->parameters())
         if (p.requires_grad()) {
             std::memcpy(&(g[count]), p.grad().data_ptr<double>(), p.grad().numel() * sizeof(double));
             count += p.grad().numel();
@@ -364,7 +380,7 @@ namespace FLopt {
             size_t count = 0;
             for (int i = 0; i < Hd::NStates; i++)
             for (int j = i; j < Hd::NStates; j++)
-            for (auto & p : nets[thread][i][j]->parameters())
+            for (auto & p : netss[thread][i][j]->parameters())
             if (p.requires_grad()) {
                 double * pg = p.grad().data_ptr<double>();
                 for (size_t i = 0; i < p.grad().numel(); i++) {
@@ -378,65 +394,68 @@ namespace FLopt {
         std::vector<at::Tensor> loss(OMP_NUM_THREADS);
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(c, nets[thread]);
+            auto & nets = netss[thread];
+            c2p(c, nets);
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
-            for (size_t data = RegChunk[thread] - RegChunk[0]; data < RegChunk[thread]; data++) {
+            for (size_t idata = RegChunk[thread] - RegChunk[0]; idata < RegChunk[thread]; idata++) {
+                auto & data = RegSet[idata];
                 // Compute diabatic quantity
-                at::Tensor H = compute_Hd(RegSet[data]->input_layer, thread);
-                at::Tensor dH = H.new_empty(RegSet[data]->dH.sizes());
+                at::Tensor H = compute_Hd(data->input_layer, nets);
+                at::Tensor dH = H.new_empty(data->dH.sizes());
                 for (int i = 0; i < Hd::NStates; i++)
                 for (int j = i; j < Hd::NStates; j++) {
-                    if (RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
-                        RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
-                        RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
+                    if (data->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
                     };
                     H[i][j].backward({}, true);
-                    dH[i][j] = RegSet[data]->JT[Hd::Hd_symm[i][j]].mv(RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad());
+                    dH[i][j] = data->JT[Hd::Hd_symm[i][j]].mv(data->input_layer[Hd::Hd_symm[i][j]].grad());
                 }
                 // Transform to adiabatic representation
                 at::Tensor energy, state;
                 std::tie(energy, state) = H.symeig(true, true);
                 dH = CL::TS::LA::UT_A3_U(dH, state);
                 // Slice to the number of states in data
-                int data_NStates = RegSet[data]->energy.size(0);
+                int data_NStates = data->energy.size(0);
                 if (Hd::NStates != data_NStates) {
                     energy = energy.slice(0, 0, data_NStates+1);
                     dH = dH.slice(0, 0, data_NStates+1);
                     dH = dH.slice(1, 0, data_NStates+1);
                 }
                 // Determine phase difference of eigenvectors
-                CL::TS::chemistry::fix(dH, RegSet[data]->dH);
+                CL::TS::chemistry::fix(dH, data->dH);
                 // dH loss
                 at::Tensor loss_data = H.new_zeros({});
                 for (int i = 0; i < data_NStates; i++)
                 for (int j = i+1; j < data_NStates; j++)
-                loss_data += (dH[i][j] - RegSet[data]->dH[i][j]).pow(2).sum();
+                loss_data += (dH[i][j] - data->dH[i][j]).pow(2).sum();
                 loss_data *= 2.0;
                 for (int i = 0; i < data_NStates; i++)
-                loss_data += (dH[i][i] - RegSet[data]->dH[i][i]).pow(2).sum();
+                loss_data += (dH[i][i] - data->dH[i][i]).pow(2).sum();
                 // + energy loss
-                loss_data += unit_square * torch::mse_loss(energy, RegSet[data]->energy, at::Reduction::Sum);
-                loss[thread] += RegSet[data]->weight * loss_data;
+                loss_data += unit_square * torch::mse_loss(energy, data->energy, at::Reduction::Sum);
+                loss[thread] += data->weight * loss_data;
             }
-            for (size_t data = DegChunk[thread] - DegChunk[0]; data < DegChunk[thread]; data++) {
+            for (size_t idata = DegChunk[thread] - DegChunk[0]; idata < DegChunk[thread]; idata++) {
+                auto & data = DegSet[idata];
                 // Compute diabatic quantity
-                at::Tensor H = compute_Hd(DegSet[data]->input_layer, thread);
-                at::Tensor dH = H.new_empty(DegSet[data]->dH.sizes());
+                at::Tensor H = compute_Hd(data->input_layer, nets);
+                at::Tensor dH = H.new_empty(data->dH.sizes());
                 for (int i = 0; i < Hd::NStates; i++)
                 for (int j = i; j < Hd::NStates; j++) {
-                    if (DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
-                        DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
-                        DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
+                    if (data->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
                     };
                     H[i][j].backward({}, true);
-                    dH[i][j] = DegSet[data]->JT[Hd::Hd_symm[i][j]].mv(DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad());
+                    dH[i][j] = data->JT[Hd::Hd_symm[i][j]].mv(data->input_layer[Hd::Hd_symm[i][j]].grad());
                 }
                 // Transform to adiabatic representation
                 at::Tensor energy, state;
                 std::tie(energy, state) = H.symeig(true, true);
                 dH = CL::TS::LA::UT_A3_U(dH, state);
                 // Slice to the number of states in data
-                int data_NStates = DegSet[data]->H.size(0);
+                int data_NStates = data->H.size(0);
                 if (Hd::NStates != data_NStates) {
                     energy = energy.slice(0, 0, data_NStates+1);
                     dH = dH.slice(0, 0, data_NStates+1);
@@ -450,20 +469,20 @@ namespace FLopt {
                 H = dHdH.mm(energy.diag().mm(eigvec));
                 dH = CL::TS::LA::UT_A3_U(dHdH, dH, eigvec);
                 // Determine phase difference of eigenvectors
-                CL::TS::chemistry::fix(dH, DegSet[data]->dH);
+                CL::TS::chemistry::fix(dH, data->dH);
                 // H and dH loss
                 at::Tensor loss_data = H.new_zeros({});
                 for (int i = 0; i < data_NStates; i++)
                 for (int j = i+1; j < data_NStates; j++)
-                loss_data += unit_square * (H[i][j] - DegSet[data]->H[i][j]).pow(2)
-                        + (dH[i][j] - DegSet[data]->dH[i][j]).pow(2).sum();
+                loss_data += unit_square * (H[i][j] - data->H[i][j]).pow(2)
+                        + (dH[i][j] - data->dH[i][j]).pow(2).sum();
                 loss_data *= 2.0;
                 for (int i = 0; i < data_NStates; i++)
-                loss_data += unit_square * (H[i][i] - DegSet[data]->H[i][i]).pow(2)
-                        + (dH[i][i] - DegSet[data]->dH[i][i]).pow(2).sum();
+                loss_data += unit_square * (H[i][i] - data->H[i][i]).pow(2)
+                        + (dH[i][i] - data->dH[i][i]).pow(2).sum();
                 loss[thread] += loss_data;
             }
-            net_zero_grad(thread);
+            net_zero_grad(nets);
             loss[thread].backward();
         }
         l = 0.0;
@@ -472,7 +491,7 @@ namespace FLopt {
         size_t count = 0;
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        for (auto & p : nets[0][i][j]->parameters())
+        for (auto & p : netss[0][i][j]->parameters())
         if (p.requires_grad()) {
             std::memcpy(&(g[count]), p.grad().data_ptr<double>(), p.grad().numel() * sizeof(double));
             count += p.grad().numel();
@@ -481,7 +500,7 @@ namespace FLopt {
             size_t count = 0;
             for (int i = 0; i < Hd::NStates; i++)
             for (int j = i; j < Hd::NStates; j++)
-            for (auto & p : nets[thread][i][j]->parameters())
+            for (auto & p : netss[thread][i][j]->parameters())
             if (p.requires_grad()) {
                 double * pg = p.grad().data_ptr<double>();
                 for (size_t i = 0; i < p.grad().numel(); i++) {
@@ -496,69 +515,72 @@ namespace FLopt {
     void residue(double * r, const double * c, const int & NEq, const int & Nc) {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(c, nets[thread]);
+            auto & nets = netss[thread];
+            c2p(c, nets);
             size_t count = start[thread];
-            for (size_t data = RegChunk[thread] - RegChunk[0]; data < RegChunk[thread]; data++) {
+            for (size_t idata = RegChunk[thread] - RegChunk[0]; idata < RegChunk[thread]; idata++) {
+                auto & data = RegSet[idata];
                 // Compute diabatic quantity
-                at::Tensor H = compute_Hd(RegSet[data]->input_layer, thread);
-                at::Tensor dH = H.new_empty(RegSet[data]->dH.sizes());
+                at::Tensor H = compute_Hd(data->input_layer, nets);
+                at::Tensor dH = H.new_empty(data->dH.sizes());
                 for (int i = 0; i < Hd::NStates; i++)
                 for (int j = i; j < Hd::NStates; j++) {
-                    if (RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
-                        RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
-                        RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
+                    if (data->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
                     };
                     H[i][j].backward({}, true);
-                    dH[i][j] = RegSet[data]->JT[Hd::Hd_symm[i][j]].mv(RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad());
+                    dH[i][j] = data->JT[Hd::Hd_symm[i][j]].mv(data->input_layer[Hd::Hd_symm[i][j]].grad());
                 }
                 // Transform to adiabatic representation
                 at::Tensor energy, state;
                 std::tie(energy, state) = H.symeig(true, true);
                 dH = CL::TS::LA::UT_A3_U(dH, state);
                 // Slice to the number of states in data
-                int data_NStates = RegSet[data]->energy.size(0);
+                int data_NStates = data->energy.size(0);
                 if (Hd::NStates != data_NStates) {
                     energy = energy.slice(0, 0, data_NStates+1);
                     dH = dH.slice(0, 0, data_NStates+1);
                     dH = dH.slice(1, 0, data_NStates+1);
                 }
                 // Determine phase difference of eigenvectors
-                CL::TS::chemistry::fix(dH, RegSet[data]->dH);
+                CL::TS::chemistry::fix(dH, data->dH);
                 // energy residue
-                at::Tensor r_E = RegSet[data]->weight * unit * (energy - RegSet[data]->energy);
+                at::Tensor r_E = data->weight * unit * (energy - data->energy);
                 std::memcpy(&(r[count]), r_E.data_ptr<double>(), r_E.numel() * sizeof(double));
                 count += r_E.numel();
                 // dH residue
                 for (int i = 0; i < data_NStates; i++) {
-                    at::Tensor r_dH = RegSet[data]->weight * (dH[i][i] - RegSet[data]->dH[i][i]);
+                    at::Tensor r_dH = data->weight * (dH[i][i] - data->dH[i][i]);
                     std::memcpy(&(r[count]), r_dH.data_ptr<double>(), r_dH.numel() * sizeof(double));
                     count += r_dH.numel();
                     for (int j = i+1; j < data_NStates; j++) {
-                        at::Tensor r_dH = RegSet[data]->weight * Sqrt2 * (dH[i][j] - RegSet[data]->dH[i][j]);
+                        at::Tensor r_dH = data->weight * Sqrt2 * (dH[i][j] - data->dH[i][j]);
                         std::memcpy(&(r[count]), r_dH.data_ptr<double>(), r_dH.numel() * sizeof(double));
                         count += r_dH.numel();
                     }
                 }
             }
-            for (size_t data = DegChunk[thread] - DegChunk[0]; data < DegChunk[thread]; data++) {
+            for (size_t idata = DegChunk[thread] - DegChunk[0]; idata < DegChunk[thread]; idata++) {
+                auto & data = DegSet[idata];
                 // Compute diabatic quantity
-                at::Tensor H = compute_Hd(DegSet[data]->input_layer, thread);
-                at::Tensor dH = H.new_empty(DegSet[data]->dH.sizes());
+                at::Tensor H = compute_Hd(data->input_layer, nets);
+                at::Tensor dH = H.new_empty(data->dH.sizes());
                 for (int i = 0; i < Hd::NStates; i++)
                 for (int j = i; j < Hd::NStates; j++) {
-                    if (DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
-                        DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
-                        DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
+                    if (data->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
                     };
                     H[i][j].backward({}, true);
-                    dH[i][j] = DegSet[data]->JT[Hd::Hd_symm[i][j]].mv(DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad());
+                    dH[i][j] = data->JT[Hd::Hd_symm[i][j]].mv(data->input_layer[Hd::Hd_symm[i][j]].grad());
                 }
                 // Transform to adiabatic representation
                 at::Tensor energy, state;
                 std::tie(energy, state) = H.symeig(true, true);
                 dH = CL::TS::LA::UT_A3_U(dH, state);
                 // Slice to the number of states in data
-                int data_NStates = DegSet[data]->H.size(0);
+                int data_NStates = data->H.size(0);
                 if (Hd::NStates != data_NStates) {
                     energy = energy.slice(0, 0, data_NStates+1);
                     dH = dH.slice(0, 0, data_NStates+1);
@@ -572,18 +594,18 @@ namespace FLopt {
                 H = dHdH.mm(energy.diag().mm(eigvec));
                 dH = CL::TS::LA::UT_A3_U(dHdH, dH, eigvec);
                 // Determine phase difference of eigenvectors
-                CL::TS::chemistry::fix(dH, DegSet[data]->dH);
+                CL::TS::chemistry::fix(dH, data->dH);
                 // H and dH residue
                 for (int i = 0; i < data_NStates; i++) {
-                    r[count] = unit * (H[i][i] - DegSet[data]->H[i][i]).item<double>();
+                    r[count] = unit * (H[i][i] - data->H[i][i]).item<double>();
                     count++;
-                    at::Tensor r_dH = dH[i][i] - DegSet[data]->dH[i][i];
+                    at::Tensor r_dH = dH[i][i] - data->dH[i][i];
                     std::memcpy(&(r[count]), r_dH.data_ptr<double>(), r_dH.numel() * sizeof(double));
                     count += r_dH.numel();
                     for (int j = i+1; j < data_NStates; j++) {
-                        r[count] = Sqrt2 * unit * (H[i][j] - DegSet[data]->H[i][j]).item<double>();
+                        r[count] = Sqrt2 * unit * (H[i][j] - data->H[i][j]).item<double>();
                         count++;
-                        at::Tensor r_dH = Sqrt2 * (dH[i][j] - DegSet[data]->dH[i][j]);
+                        at::Tensor r_dH = Sqrt2 * (dH[i][j] - data->dH[i][j]);
                         std::memcpy(&(r[count]), r_dH.data_ptr<double>(), r_dH.numel() * sizeof(double));
                         count += r_dH.numel();
                     }
@@ -594,81 +616,84 @@ namespace FLopt {
     void Jacobian(double * JT, const double * c, const int & NEq, const int & Nc) {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(c, nets[thread]);
+            auto & nets = netss[thread];
+            c2p(c, nets);
             size_t column = start[thread];
-            for (size_t data = RegChunk[thread] - RegChunk[0]; data < RegChunk[thread]; data++) {
+            for (size_t idata = RegChunk[thread] - RegChunk[0]; idata < RegChunk[thread]; idata++) {
+                auto & data = RegSet[idata];
                 // Compute diabatic quantity
-                at::Tensor H = compute_Hd(RegSet[data]->input_layer, thread);
-                at::Tensor dH = H.new_empty(RegSet[data]->dH.sizes());
+                at::Tensor H = compute_Hd(data->input_layer, nets);
+                at::Tensor dH = H.new_empty(data->dH.sizes());
                 for (int i = 0; i < Hd::NStates; i++)
                 for (int j = i; j < Hd::NStates; j++) {
-                    if (RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
-                        RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
-                        RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
+                    if (data->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
                     };
                     H[i][j].backward({}, true);
-                    dH[i][j] = RegSet[data]->JT[Hd::Hd_symm[i][j]].mv(RegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad());
+                    dH[i][j] = data->JT[Hd::Hd_symm[i][j]].mv(data->input_layer[Hd::Hd_symm[i][j]].grad());
                 }
                 // Transform to adiabatic representation
                 at::Tensor energy, state;
                 std::tie(energy, state) = H.symeig(true, true);
                 dH = CL::TS::LA::UT_A3_U(dH, state);
                 // Slice to the number of states in data
-                int data_NStates = RegSet[data]->energy.size(0);
+                int data_NStates = data->energy.size(0);
                 if (Hd::NStates != data_NStates) {
                     energy = energy.slice(0, 0, data_NStates+1);
                     dH = dH.slice(0, 0, data_NStates+1);
                     dH = dH.slice(1, 0, data_NStates+1);
                 }
                 // Determine phase difference of eigenvectors
-                CL::TS::chemistry::fix(dH, RegSet[data]->dH);
+                CL::TS::chemistry::fix(dH, data->dH);
                 // energy Jacobian
-                at::Tensor r_E = RegSet[data]->weight * unit * (energy - RegSet[data]->energy);
+                at::Tensor r_E = data->weight * unit * (energy - data->energy);
                 for (size_t el = 0; el < r_E.numel(); el++) {
-                    net_zero_grad(thread);
+                    net_zero_grad(nets);
                     r_E[el].backward({}, true);
-                    dp2JT(thread, JT, NEq, column);
+                    dp2JT(nets, JT, NEq, column);
                     column++;
                 }
                 // dH Jacobian
                 for (int i = 0; i < data_NStates; i++) {
-                    at::Tensor r_dH = RegSet[data]->weight * (dH[i][i] - RegSet[data]->dH[i][i]);
+                    at::Tensor r_dH = data->weight * (dH[i][i] - data->dH[i][i]);
                     for (size_t el = 0; el < r_dH.numel(); el++) {
-                        net_zero_grad(thread);
+                        net_zero_grad(nets);
                         r_dH[el].backward({}, true);
-                        dp2JT(thread, JT, NEq, column);
+                        dp2JT(nets, JT, NEq, column);
                         column++;
                     }
                     for (int j = i+1; j < data_NStates; j++) {
-                        at::Tensor r_dH = RegSet[data]->weight * Sqrt2 * (dH[i][j] - RegSet[data]->dH[i][j]);
+                        at::Tensor r_dH = data->weight * Sqrt2 * (dH[i][j] - data->dH[i][j]);
                         for (size_t el = 0; el < r_dH.numel(); el++) {
-                            net_zero_grad(thread);
+                            net_zero_grad(nets);
                             r_dH[el].backward({}, true);
-                            dp2JT(thread, JT, NEq, column);
+                            dp2JT(nets, JT, NEq, column);
                             column++;
                         }
                     }
                 }
             }
-            for (size_t data = DegChunk[thread] - DegChunk[0]; data < DegChunk[thread]; data++) {
+            for (size_t idata = DegChunk[thread] - DegChunk[0]; idata < DegChunk[thread]; idata++) {
+                auto & data = DegSet[idata];
                 // Compute diabatic quantity
-                at::Tensor H = compute_Hd(DegSet[data]->input_layer, thread);
-                at::Tensor dH = H.new_empty(DegSet[data]->dH.sizes());
+                at::Tensor H = compute_Hd(data->input_layer, nets);
+                at::Tensor dH = H.new_empty(data->dH.sizes());
                 for (int i = 0; i < Hd::NStates; i++)
                 for (int j = i; j < Hd::NStates; j++) {
-                    if (DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
-                        DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
-                        DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
+                    if (data->input_layer[Hd::Hd_symm[i][j]].grad().defined()) {
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().detach_();
+                        data->input_layer[Hd::Hd_symm[i][j]].grad().zero_();
                     };
                     H[i][j].backward({}, true);
-                    dH[i][j] = DegSet[data]->JT[Hd::Hd_symm[i][j]].mv(DegSet[data]->input_layer[Hd::Hd_symm[i][j]].grad());
+                    dH[i][j] = data->JT[Hd::Hd_symm[i][j]].mv(data->input_layer[Hd::Hd_symm[i][j]].grad());
                 }
                 // Transform to adiabatic representation
                 at::Tensor energy, state;
                 std::tie(energy, state) = H.symeig(true, true);
                 dH = CL::TS::LA::UT_A3_U(dH, state);
                 // Slice to the number of states in data
-                int data_NStates = DegSet[data]->H.size(0);
+                int data_NStates = data->H.size(0);
                 if (Hd::NStates != data_NStates) {
                     energy = energy.slice(0, 0, data_NStates+1);
                     dH = dH.slice(0, 0, data_NStates+1);
@@ -682,32 +707,32 @@ namespace FLopt {
                 H = dHdH.mm(energy.diag().mm(eigvec));
                 dH = CL::TS::LA::UT_A3_U(dHdH, dH, eigvec);
                 // Determine phase difference of eigenvectors
-                CL::TS::chemistry::fix(dH, DegSet[data]->dH);
+                CL::TS::chemistry::fix(dH, data->dH);
                 // H and dH Jacobian
                 for (int i = 0; i < data_NStates; i++) {
-                    at::Tensor r_H = H[i][i] - DegSet[data]->H[i][i];
-                    net_zero_grad(thread);
+                    at::Tensor r_H = H[i][i] - data->H[i][i];
+                    net_zero_grad(nets);
                     r_H.backward({}, true);
-                    dp2JT(thread, JT, NEq, column);
+                    dp2JT(nets, JT, NEq, column);
                     column++;
-                    at::Tensor r_dH = dH[i][i] - DegSet[data]->dH[i][i];
+                    at::Tensor r_dH = dH[i][i] - data->dH[i][i];
                     for (size_t el = 0; el < r_dH.numel(); el++) {
-                        net_zero_grad(thread);
+                        net_zero_grad(nets);
                         r_dH[el].backward({}, true);
-                        dp2JT(thread, JT, NEq, column);
+                        dp2JT(nets, JT, NEq, column);
                         column++;
                     }
                     for (int j = i+1; j < data_NStates; j++) {
-                        at::Tensor r_H = Sqrt2 * (H[i][j] - DegSet[data]->H[i][j]);
-                        net_zero_grad(thread);
+                        at::Tensor r_H = Sqrt2 * (H[i][j] - data->H[i][j]);
+                        net_zero_grad(nets);
                         r_H.backward({}, true);
-                        dp2JT(thread, JT, NEq, column);
+                        dp2JT(nets, JT, NEq, column);
                         column++;
-                        at::Tensor r_dH = Sqrt2 * (dH[i][j] - DegSet[data]->dH[i][j]);
+                        at::Tensor r_dH = Sqrt2 * (dH[i][j] - data->dH[i][j]);
                         for (size_t el = 0; el < r_dH.numel(); el++) {
-                            net_zero_grad(thread);
+                            net_zero_grad(nets);
                             r_dH[el].backward({}, true);
-                            dp2JT(thread, JT, NEq, column);
+                            dp2JT(nets, JT, NEq, column);
                             column++;
                         }
                     }
@@ -722,18 +747,19 @@ namespace FLopt {
         OMP_NUM_THREADS = omp_get_max_threads();
         std::cout << "The number of threads = " << OMP_NUM_THREADS << '\n';
 
-        nets.resize(OMP_NUM_THREADS);
+        netss.resize(OMP_NUM_THREADS);
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            nets[thread].resize(Hd::NStates);
+            auto & nets = netss[thread];
+            nets.resize(Hd::NStates);
             for (int i = 0; i < Hd::NStates; i++) {
-                nets[thread][i].resize(Hd::NStates);
+                nets[i].resize(Hd::NStates);
                 for (int j = i; j < Hd::NStates; j++) {
-                    nets[thread][i][j] = std::make_shared<Hd::Net>(
+                    nets[i][j] = std::make_shared<Hd::Net>(
                         (*(Hd::nets[i][j]->fc[0]))->options.in_features(),
                         Hd::Hd_symm[i][j] == 0, Hd::nets[i][j]->fc.size());
-                    nets[thread][i][j]->to(torch::kFloat64);
-                    nets[thread][i][j]->copy(Hd::nets[i][j]);
-                    nets[thread][i][j]->freeze(freeze_);
+                    nets[i][j]->to(torch::kFloat64);
+                    nets[i][j]->copy(Hd::nets[i][j]);
+                    nets[i][j]->freeze(freeze_);
                 }
             }
         }
@@ -766,7 +792,7 @@ namespace FLopt {
         int Nc = 0;
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        Nc += CL::TS::NParameters(nets[0][i][j]->parameters());
+        Nc += CL::TS::NParameters(netss[0][i][j]->parameters());
         std::cout << "There are " << Nc << " parameters to train\n";
         double * c = new double[Nc];
         p2c(Hd::nets, c);
@@ -790,7 +816,7 @@ namespace FLopt {
 
 at::Tensor loss_reg(AbInitio::RegData * data) {
     // Compute diabatic quantity
-    at::Tensor H = Hd::compute_Hd_from_input_layer(data->input_layer);
+    at::Tensor H = compute_Hd(data->input_layer);
     at::Tensor dH = H.new_empty(data->dH.sizes());
     for (int i = 0; i < Hd::NStates; i++)
     for (int j = i; j < Hd::NStates; j++) {
@@ -828,7 +854,7 @@ at::Tensor loss_reg(AbInitio::RegData * data) {
 }
 at::Tensor loss_deg(AbInitio::DegData * data) {
     // Compute diabatic quantity
-    at::Tensor H = Hd::compute_Hd_from_input_layer(data->input_layer);
+    at::Tensor H = compute_Hd(data->input_layer);
     at::Tensor dH = H.new_empty(data->dH.sizes());
     for (int i = 0; i < Hd::NStates; i++)
     for (int j = i; j < Hd::NStates; j++) {
@@ -877,7 +903,7 @@ std::tuple<double, double> RMSD_reg(const std::vector<AbInitio::RegData *> DataS
     if (! DataSet.empty()) {
         for (auto & data : DataSet) {
             // Compute diabatic quantity
-            at::Tensor H = Hd::compute_Hd_from_input_layer(data->input_layer);
+            at::Tensor H = compute_Hd(data->input_layer);
             at::Tensor dH = H.new_empty(data->dH.sizes());
             for (int i = 0; i < Hd::NStates; i++)
             for (int j = i; j < Hd::NStates; j++) {
@@ -925,7 +951,7 @@ std::tuple<double, double> RMSD_deg(const std::vector<AbInitio::DegData *> DataS
     if (! DataSet.empty()) {
         for (auto & data : DataSet) {
             // Compute diabatic quantity
-            at::Tensor H = Hd::compute_Hd_from_input_layer(data->input_layer);
+            at::Tensor H = compute_Hd(data->input_layer);
             at::Tensor dH = H.new_empty(data->dH.sizes());
             for (int i = 0; i < Hd::NStates; i++)
             for (int j = i; j < Hd::NStates; j++) {
