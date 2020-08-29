@@ -1,6 +1,7 @@
 // Vector & matrix & high order tensor operation
 // for pointer and std::vector
 
+#include <stddef.h>
 #include <cmath>
 #include <vector>
 

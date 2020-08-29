@@ -1,10 +1,9 @@
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
-set(CMAKE_C_COMPILER icc)
-set(CMAKE_CXX_COMPILER icpc)
+set(CMAKE_C_COMPILER gcc)
+set(CMAKE_CXX_COMPILER g++)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -parallel -mkl -ipo -m64 -xCORE-AVX2 -mtune=core-avx2 -O3 -no-prec-div -fp-model fast=2 -static-intel")
 
 # libtorch
 set(CMAKE_PREFIX_PATH ~/Software/Programming/libtorch-cpu-1.6.0)
@@ -18,5 +17,11 @@ add_library(CL
     source/TorchSupport/chemistry.cpp
 )
 
-target_link_libraries(CL "${TORCH_LIBRARIES}")
-set_property(TARGET CL PROPERTY CXX_STANDARD 14)
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -parallel -mkl -ipo -m64 -xCORE-AVX2 -mtune=core-avx2 -O3 -no-prec-div -fp-model fast=2 -static-intel")
+    target_link_libraries(CL "${TORCH_LIBRARIES}")
+else ()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -m64 -march=core-avx2 -mtune=core-avx2 -O3")
+    link_directories(/software/apps/compilers/intel/compilers_and_libraries_2017.7.259/linux/mkl/lib/intel64)
+    target_link_libraries(CL "${TORCH_LIBRARIES}")
+endif ()

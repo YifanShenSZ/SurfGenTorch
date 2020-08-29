@@ -1,11 +1,10 @@
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
-set(CMAKE_C_COMPILER icc)
-set(CMAKE_CXX_COMPILER icpc)
+set(CMAKE_C_COMPILER gcc)
+set(CMAKE_CXX_COMPILER g++)
 
 project(SurfGenTorch)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -parallel -mkl -ipo -m64 -xCORE-AVX2 -mtune=core-avx2 -O3 -no-prec-div -fp-model fast=2 -static-intel")
 
 # libtorch
 set(CMAKE_PREFIX_PATH ~/Software/Programming/libtorch-cpu-1.6.0)
@@ -30,5 +29,12 @@ add_executable(SurfGenTorch.exe
     source/train.cpp
     source/main.cpp
 )
-target_link_libraries(SurfGenTorch.exe "${TORCH_LIBRARIES}" FL CL)
-set_property(TARGET SurfGenTorch.exe PROPERTY CXX_STANDARD 14)
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -parallel -mkl -ipo -m64 -xCORE-AVX2 -mtune=core-avx2 -O3 -no-prec-div -fp-model fast=2 -static-intel")
+    target_link_libraries(SurfGenTorch.exe "${TORCH_LIBRARIES}" FL CL)
+else ()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -m64 -march=core-avx2 -mtune=core-avx2 -O3")
+    link_directories(/software/apps/compilers/intel/compilers_and_libraries_2017.7.259/linux/mkl/lib/intel64)
+    target_link_libraries(SurfGenTorch.exe "${TORCH_LIBRARIES}" FL CL mkl_intel_lp64 mkl_gnu_thread mkl_core gomp pthread m dl)
+endif ()
