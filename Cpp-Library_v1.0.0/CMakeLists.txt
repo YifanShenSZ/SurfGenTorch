@@ -18,10 +18,9 @@ add_library(CL
 )
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -parallel -mkl -ipo -m64 -xCORE-AVX2 -mtune=core-avx2 -O3 -no-prec-div -fp-model fast=2 -static-intel")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -m64 -xCORE-AVX2 -mtune=core-avx2 -O3 -no-prec-div -fp-model fast=2 -static-intel -parallel -ipo")
     target_link_libraries(CL "${TORCH_LIBRARIES}")
 else ()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -m64 -march=core-avx2 -mtune=core-avx2 -O3")
-    link_directories(/software/apps/compilers/intel/compilers_and_libraries_2017.7.259/linux/mkl/lib/intel64)
     target_link_libraries(CL "${TORCH_LIBRARIES}")
 endif ()
