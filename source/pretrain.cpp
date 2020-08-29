@@ -47,8 +47,8 @@ namespace FLopt {
         }
     }
 
-    void net_zero_grad(const int & thread) {
-        for (auto & p : nets[thread]->parameters())
+    void net_zero_grad(const std::shared_ptr<DimRed::Net> & net) {
+        for (auto & p : net->parameters())
         if (p.requires_grad() && p.grad().defined()) {
             p.grad().detach_();
             p.grad().zero_();
@@ -75,14 +75,15 @@ namespace FLopt {
         std::vector<at::Tensor> loss(OMP_NUM_THREADS);
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(c, nets[thread]);
+            auto & net = nets[thread];
+            c2p(c, net);
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
-                    nets[thread]->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
+                    net->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
                     at::Reduction::Sum);
             }
-            net_zero_grad(thread);
+            net_zero_grad(net);
             loss[thread].backward();
         }
         // Push network gradients to g
@@ -108,14 +109,15 @@ namespace FLopt {
         std::vector<at::Tensor> loss(OMP_NUM_THREADS);
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(c, nets[thread]);
+            auto & net = nets[thread];
+            c2p(c, net);
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
-                    nets[thread]->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
+                    net->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
                     at::Reduction::Sum);
             }
-            net_zero_grad(thread);
+            net_zero_grad(net);
             loss[thread].backward();
         }
         l = 0.0;
@@ -157,15 +159,16 @@ namespace FLopt {
     void Jacobian(double * JT, const double * c, const int & NEq, const int & Nc) {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
-            c2p(c, nets[thread]);
+            auto & net = nets[thread];
+            c2p(c, net);
             size_t column = start[thread];
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
-                at::Tensor r_tensor = nets[thread]->forward(GeomSet[data]->SAIgeom[irred]);
+                at::Tensor r_tensor = net->forward(GeomSet[data]->SAIgeom[irred]);
                 for (size_t el = 0; el < r_tensor.numel(); el++) {
-                    net_zero_grad(thread);
+                    net_zero_grad(net);
                     r_tensor[el].backward({}, true);
                     size_t row = 0;
-                    for (auto & p : nets[thread]->parameters())
+                    for (auto & p : net->parameters())
                     if (p.requires_grad()) {
                         double * pg = p.grad().data_ptr<double>();
                         for (size_t i = 0; i < p.grad().numel(); i++) {
