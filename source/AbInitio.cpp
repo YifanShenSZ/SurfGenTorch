@@ -76,8 +76,8 @@ void DataLoader::SubtractRef(const double & zero_point) {
 // Regular data
 RegData::RegData() {}
 RegData::RegData(DataLoader & loader) {
-    loader.intgeom.set_requires_grad(true);
     // input_layer and J^T
+    loader.intgeom.set_requires_grad(true);
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(loader.intgeom);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
     std::vector<at::Tensor> InpLay = Hd::input::input_layer(Redgeom);
@@ -116,8 +116,8 @@ void RegData::adjust_weight(const double & Ethresh) {
 
 DegData::DegData() {}
 DegData::DegData(DataLoader & loader) {
-    loader.intgeom.set_requires_grad(true);
     // input_layer and J^T
+    loader.intgeom.set_requires_grad(true);
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(loader.intgeom);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
     std::vector<at::Tensor> InpLay = Hd::input::input_layer(Redgeom);
@@ -142,14 +142,8 @@ DegData::DegData(DataLoader & loader) {
         JT[irred] = loader.BT.mm(dinput_layer_divide_dintgeom.transpose(0, 1));
     }
     // H and dH
-    // Diagonalize ▽H . ▽H
-    at::Tensor dHdH = CL::TS::LA::sy3matdotmul(loader.dH, loader.dH);
-    at::Tensor eigval, eigvec;
-    std::tie(eigval, eigvec) = dHdH.symeig(true, true);
-    dHdH = eigvec.transpose(0, 1);
-    // Transform H and dH
-    H = dHdH.mm(loader.energy.diag().mm(eigvec));
-    dH = CL::TS::LA::UT_A3_U(dHdH, loader.dH, eigvec);
+    H = loader.energy; dH = loader.dH;
+    CL::TS::chemistry::composite_representation(H, dH);
 }
 DegData::~DegData() {}
 

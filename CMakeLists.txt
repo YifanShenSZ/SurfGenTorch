@@ -17,6 +17,9 @@ link_directories(~/Library/Fortran-Library/lib)
 include_directories(Cpp-Library_v1.0.0)
 add_subdirectory(Cpp-Library_v1.0.0)
 
+# libSGT
+add_subdirectory(libSGT)
+
 include_directories(include)
 add_executable(SurfGenTorch.exe
     source/SSAIC.cpp

@@ -2,6 +2,8 @@
 
 #include <torch/torch.h>
 
+#include <CppLibrary/TorchSupport.hpp>
+
 namespace CL { namespace TS { namespace chemistry {
     bool check_degeneracy(const double & threshold, const at::Tensor & energy) {
         bool deg = false;
@@ -14,8 +16,20 @@ namespace CL { namespace TS { namespace chemistry {
         return deg;
     }
 
-    // Matrix off-diagonal elements do not have determinate phase, because
-    // the eigenvectors defining a representation have indeterminate phase difference
+    // Transform adiabatic energy (H) and gradient (dH) to composite representation
+    void composite_representation(at::Tensor & H, at::Tensor & dH) {
+        at::Tensor dHdH = LA::sy3matdotmul(dH, dH);
+        at::Tensor eigval, eigvec;
+        std::tie(eigval, eigvec) = dHdH.symeig(true, true);
+        dHdH = eigvec.transpose(0, 1);
+        H = dHdH.mm(H.diag().mm(eigvec));
+        dH = LA::UT_A3_U(dHdH, dH, eigvec);
+    }    
+
+    /*
+    Matrix off-diagonal elements do not have determinate phase, because
+    the eigenvectors defining a representation have indeterminate phase difference
+    */
 
     // For a certain number of electronic states (NStates),
     // there are 2^(NStates-1) possibilities in total

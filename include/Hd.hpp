@@ -29,7 +29,7 @@ extern size_t NIrred;
 // Number of electronic states
 extern int NStates;
 // Symmetry of Hd elements
-extern size_t ** Hd_symm;
+extern size_t ** symmetry;
 // Each Hd element owns a network
 extern std::vector<std::vector<std::shared_ptr<Net>>> nets;
 
@@ -43,6 +43,8 @@ namespace input {
 
 void define_Hd(const std::string & Hd_in);
 
+// Input:  input layer
+// Output: Hd
 at::Tensor compute_Hd(const std::vector<at::Tensor> & x);
 
 } // namespace Hd

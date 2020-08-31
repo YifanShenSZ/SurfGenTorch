@@ -48,6 +48,9 @@ namespace LA {
 namespace chemistry {
     bool check_degeneracy(const double & threshold, const at::Tensor & energy);
 
+    // Transform adiabatic energy (H) and gradient (dH) to composite representation
+    void composite_representation(at::Tensor & H, at::Tensor & dH);
+
     // Matrix off-diagonal elements do not have determinate phase, because
     // the eigenvectors defining a representation have indeterminate phase difference
     void initialize_phase_fixing(const size_t & NStates_);

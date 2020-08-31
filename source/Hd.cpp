@@ -92,7 +92,7 @@ size_t NIrred;
 // Number of electronic states
 int NStates;
 // Symmetry of Hd elements
-size_t ** Hd_symm;
+size_t ** symmetry;
 // Each Hd element owns a network
 std::vector<std::vector<std::shared_ptr<Net>>> nets;
 
@@ -170,11 +170,11 @@ void define_Hd(const std::string & Hd_in) {
         NStates = std::stoul(line);
         // Symmetry of Hd elements
         std::getline(ifs, line);
-        CL::utility::CreateArray(Hd_symm, NStates, NStates);
+        CL::utility::CreateArray(symmetry, NStates, NStates);
         for (int i = 0; i < NStates; i++) {
             std::getline(ifs, line); CL::utility::split(line, strs);
             for (int j = 0; j < NStates; j++)
-            Hd_symm[i][j] = std::stoul(strs[j]) - 1;
+            symmetry[i][j] = std::stoul(strs[j]) - 1;
         }
         // Input layer specification file
         std::string Hd_input_layer_in;
@@ -193,7 +193,7 @@ void define_Hd(const std::string & Hd_in) {
     NIrred = 0;
     for (int i = 0; i < NStates; i++)
     for (int j = 0; j < NStates; j++)
-    NIrred = Hd_symm[i][j] > NIrred ? Hd_symm[i][j] : NIrred;
+    NIrred = symmetry[i][j] > NIrred ? symmetry[i][j] : NIrred;
     NIrred++;
     // Polynomial numbering rule
     std::vector<size_t> NInput_per_irred = input::prepare_PNR(Hd_input_layer_in);
@@ -203,8 +203,8 @@ void define_Hd(const std::string & Hd_in) {
     for (int i = 0; i < NStates; i++) {
         nets[i].resize(NStates);
         for (int j = i; j < NStates; j++) {
-            nets[i][j] = std::make_shared<Net>(NInput_per_irred[Hd_symm[i][j]],
-                Hd::Hd_symm[i][j] == 0);
+            nets[i][j] = std::make_shared<Net>(NInput_per_irred[symmetry[i][j]],
+                Hd::symmetry[i][j] == 0);
             nets[i][j]->to(torch::kFloat64);
             torch::load(nets[i][j], net_pars[index]);
             nets[i][j]->eval();
@@ -213,14 +213,13 @@ void define_Hd(const std::string & Hd_in) {
     }
 }
 
+// Input:  input layer
+// Output: Hd
 at::Tensor compute_Hd(const std::vector<at::Tensor> & x) {
-    // Determine input layer
-    std::vector<at::Tensor> input_layer = input::input_layer(x);
-    // Compute upper triangle
     at::Tensor Hd = x[0].new_empty({NStates, NStates});
     for (int i = 0; i < NStates; i++)
     for (int j = i; j < NStates; j++)
-    Hd[i][j] = nets[i][j]->forward(input_layer[Hd_symm[i][j]]);
+    Hd[i][j] = nets[i][j]->forward(x[symmetry[i][j]]);
     return Hd;
 }
 

@@ -10,6 +10,17 @@
 
 namespace pretrain {
 
+double RMSD(const size_t & irred, const std::shared_ptr<DimRed::Net> & net, const std::vector<AbInitio::geom *> & GeomSet) {
+    double e = 0.0;
+    torch::NoGradGuard no_grad;
+    for (auto & geom : GeomSet) {
+        e += torch::mse_loss(net->forward(geom->SAIgeom[irred]), geom->SAIgeom[irred],
+             at::Reduction::Sum).item<double>();
+    }
+    e /= GeomSet.size() * SSAIC::NSAIC_per_irred[irred];
+    return std::sqrt(e);
+}
+
 // To make use of Fortran-Library nonlinear optimizers:
 //     1. Map the network parameters to vector c
 //     2. Compute residue and Jacobian
@@ -233,17 +244,6 @@ namespace FLopt {
         delete [] c;
     }
 } // namespace FLopt
-
-double RMSD(const size_t & irred, const std::shared_ptr<DimRed::Net> & net, const std::vector<AbInitio::geom *> & GeomSet) {
-    double e = 0.0;
-    torch::NoGradGuard no_grad;
-    for (auto & geom : GeomSet) {
-        e += torch::mse_loss(net->forward(geom->SAIgeom[irred]), geom->SAIgeom[irred],
-             at::Reduction::Sum).item<double>();
-    }
-    e /= GeomSet.size() * SSAIC::NSAIC_per_irred[irred];
-    return std::sqrt(e);
-}
 
 void pretrain(const size_t & irred, const size_t & max_depth, const size_t & freeze,
 const std::vector<std::string> & data_set,
