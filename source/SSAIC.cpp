@@ -54,6 +54,8 @@ struct OthScalRul {
 int intdim;
 // Fortran-Library internal coordinate definition
 std::vector<FL::GT::IntCoordDef> IntCoordDef;
+// The ID of this internal coordinate definition
+int DefID;
 // Cartesian coordinate dimension
 int cartdim;
 // Internal coordinate origin
@@ -141,8 +143,8 @@ void define_SSAIC(const std::string & SSAIC_in) {
         }
     ifs.close();
     // Define internal coordinate
-    FL::GT::FetchInternalCoordinateDefinition(format, IntCoordDef_file, intdim, IntCoordDef);
-    FL::GT::DefineInternalCoordinate(format, IntCoordDef_file);
+    std::tie(intdim, IntCoordDef) = FL::GT::FetchInternalCoordinateDefinition(format, IntCoordDef_file);
+    std::tie(intdim, DefID) = FL::GT::DefineInternalCoordinate(format, IntCoordDef_file);
     std::cout << "Number of internal coordinates: " << intdim << '\n';
     // Generate self_scaling and self_complete matrices
     self_scaling = at::zeros({intdim, intdim}, top);
@@ -156,12 +158,12 @@ void define_SSAIC(const std::string & SSAIC_in) {
     if (format == "Columbus7") {
         CL::chemistry::xyz_mass<double> molorigin(origin_file, true);
         cartdim = 3 * molorigin.NAtoms();
-        FL::GT::InternalCoordinate(molorigin.geom().data(), origin.data_ptr<double>(), cartdim, intdim);
+        FL::GT::InternalCoordinate(molorigin.geom().data(), origin.data_ptr<double>(), cartdim, intdim, DefID);
     }
     else {
         CL::chemistry::xyz<double> molorigin(origin_file, true);
         cartdim = 3 * molorigin.NAtoms();
-        FL::GT::InternalCoordinate(molorigin.geom().data(), origin.data_ptr<double>(), cartdim, intdim);
+        FL::GT::InternalCoordinate(molorigin.geom().data(), origin.data_ptr<double>(), cartdim, intdim, DefID);
     }
 }
 

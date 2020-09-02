@@ -9,6 +9,8 @@ namespace SSAIC {
 
 // Internal coordinate dimension, not necessarily = cartdim - 6 or 5
 extern int intdim;
+// The ID of this internal coordinate definition
+extern int DefID;
 // Cartesian coordinate dimension
 extern int cartdim;
 

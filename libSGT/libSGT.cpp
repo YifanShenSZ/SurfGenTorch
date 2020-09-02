@@ -25,7 +25,7 @@ std::vector<at::Tensor> compute_input_layer(const at::Tensor & r) {
     at::Tensor q = r.new_empty(SSAIC::cartdim);
     FL::GT::InternalCoordinate(
         r.data_ptr<double>(), q.data_ptr<double>(),
-        SSAIC::cartdim, SSAIC::intdim);
+        SSAIC::cartdim, SSAIC::intdim, SSAIC::DefID);
     // input_layer
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
@@ -41,7 +41,7 @@ compute_input_layer_and_JT(const at::Tensor & r) {
     FL::GT::WilsonBMatrixAndInternalCoordinate(
         r.data_ptr<double>(),
         BT.data_ptr<double>(), q.data_ptr<double>(),
-        SSAIC::cartdim, SSAIC::intdim);
+        SSAIC::cartdim, SSAIC::intdim, SSAIC::DefID);
     // input_layer
     q.set_requires_grad(true);
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
