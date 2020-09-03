@@ -287,7 +287,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                 }
                 if (iepoch % follow == 0) {
                     std::cout << "epoch = " << iepoch
-                              << ", RMSD = " << RMSD(irred, net, GeomSet->example()) << '\n';
+                              << ", RMSD = " << RMSD(irred, net, GeomSet->example()) << std::endl;
                     torch::save(net, "pretrain_"+std::to_string(iepoch)+".net");
                     torch::save(optimizer, "pretrain_"+std::to_string(iepoch)+".opt");
                 }
@@ -315,7 +315,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                 }
                 if (iepoch % follow == 0) {
                     std::cout << "epoch = " << iepoch
-                              << ", RMSD = " << RMSD(irred, net, GeomSet->example()) << '\n';
+                              << ", RMSD = " << RMSD(irred, net, GeomSet->example()) << std::endl;
                     torch::save(net, "pretrain_"+std::to_string(iepoch)+".net");
                     torch::save(optimizer, "pretrain_"+std::to_string(iepoch)+".opt");
                 }

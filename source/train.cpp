@@ -715,7 +715,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                     std::tie(degRMSD_H, degRMSD_dH) = RMSD_deg(DegSet->example());
                     std::cout << "epoch = " << iepoch << '\n'
                               << "For regular data, RMSD(H) = " << regRMSD_H << ", RMSD(dH) = " << regRMSD_dH << '\n'
-                              << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << '\n';
+                              << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << std::endl;
                     for (int i = 0; i < Hd::NStates; i++)
                     for (int j = i; j < Hd::NStates; j++)
                     torch::save(Hd::nets[i][j], "Hd"+std::to_string(i)+std::to_string(j)+"_"+std::to_string(iepoch)+".net");
@@ -753,7 +753,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                     std::tie(degRMSD_H, degRMSD_dH) = RMSD_deg(DegSet->example());
                     std::cout << "epoch = " << iepoch << '\n'
                               << "For regular data, RMSD(H) = " << regRMSD_H << ", RMSD(dH) = " << regRMSD_dH << '\n'
-                              << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << '\n';
+                              << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << std::endl;
                     for (int i = 0; i < Hd::NStates; i++)
                     for (int j = i; j < Hd::NStates; j++)
                     torch::save(Hd::nets[i][j], "Hd"+std::to_string(i)+std::to_string(j)+"_"+std::to_string(iepoch)+".net");

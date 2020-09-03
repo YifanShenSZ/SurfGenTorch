@@ -20,9 +20,9 @@ where the ideal = one dimension gets 0.001 while others are perfect
 Based on accuray, the depth of each network is:
 | irred | max depth | goal depth | ideal depth |
 |-------|-----------|------------|-------------|
-|  A1   |    12     |            |             |
+|  A1   |    12     |     8      |      7      |
 |  B1   |     6     |     4      |      4      |
-|  B2   |    11     |            |             |
+|  B2   |    11     |    10      |     10      |
 |  A2   |     3     |     1      |      1      |
 
 Total number of weights <= 728 + 112 + 572 + 20 = 1432
