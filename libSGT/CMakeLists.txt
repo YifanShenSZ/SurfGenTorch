@@ -27,15 +27,12 @@ set(SOURCE
     ../source/Hd.cpp
     libSGT.cpp)
 add_library(SGT SHARED ${CLSOURCE} ${SOURCE})
-add_library(SGT-static STATIC ${SOURCE})
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -m64 -xCORE-AVX2 -mtune=core-avx2 -O3 -no-prec-div -fp-model fast=2 -static-intel -parallel -ipo -mkl")
-    target_link_libraries(SGT "${TORCH_LIBRARIES}" FL)
-    target_link_libraries(SGT-static "${TORCH_LIBRARIES}" FL CL)
+    target_link_libraries(SGT "${TORCH_LIBRARIES}" CL FL)
 else ()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -m64 -march=core-avx2 -mtune=core-avx2 -O3")
     link_directories(${MKLROOT}/lib/intel64)
-    target_link_libraries(SGT "${TORCH_LIBRARIES}" FL mkl_intel_lp64 mkl_gnu_thread mkl_core)
-    target_link_libraries(SGT-static "${TORCH_LIBRARIES}" FL CL mkl_intel_lp64 mkl_gnu_thread mkl_core)
+    target_link_libraries(SGT "${TORCH_LIBRARIES}" CL FL mkl_intel_lp64 mkl_gnu_thread mkl_core)
 endif ()

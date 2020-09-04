@@ -182,7 +182,7 @@ void define_Hd(const std::string & Hd_in) {
         std::getline(ifs, Hd_input_layer_in);
         CL::utility::trim(Hd_input_layer_in);
         // Network parameters
-        std::vector<std::string> net_pars(NStates*(NStates-1)/2);
+        std::vector<std::string> net_pars((NStates+1)*NStates/2);
         std::getline(ifs, line);
         for (auto & p : net_pars) {
             std::getline(ifs, p);

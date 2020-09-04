@@ -2,13 +2,18 @@
 An evaluation library for SurfGenTorch
 
 Input: Cartesian coordinate
-Output: Hd, dHd, ddHa
+Output: Hd, dHd
+
+The higher order gradients cannot be calculated,
+since SurfGenTorch adopts scaled and symmetry adapted internal coordinate
+whose Jacobian to Cartesian coordinate is calculated by Fortran-Library rather than pytorch,
+which means this Jacobian cannot enjoy pytorch automatic differentiation
 */
 
 #include <torch/torch.h>
 
-#include <FortranLibrary.hpp>
 #include <CppLibrary/TorchSupport.hpp>
+#include <FortranLibrary.hpp>
 
 #include "SSAIC.hpp"
 #include "DimRed.hpp"
@@ -22,7 +27,7 @@ void initialize_libSGT(const std::string & SSAIC_in, const std::string & DimRed_
 
 std::vector<at::Tensor> compute_input_layer(const at::Tensor & r) {
     // cart2int
-    at::Tensor q = r.new_empty(SSAIC::cartdim);
+    at::Tensor q = r.new_empty(SSAIC::intdim);
     FL::GT::InternalCoordinate(
         r.data_ptr<double>(), q.data_ptr<double>(),
         SSAIC::cartdim, SSAIC::intdim, SSAIC::DefID);
@@ -36,7 +41,7 @@ std::vector<at::Tensor> compute_input_layer(const at::Tensor & r) {
 std::tuple<std::vector<at::Tensor>, std::vector<at::Tensor>>
 compute_input_layer_and_JT(const at::Tensor & r) {
     // cart2int
-    at::Tensor q = r.new_empty(SSAIC::cartdim);
+    at::Tensor q = r.new_empty(SSAIC::intdim);
     at::Tensor BT = r.new_empty({SSAIC::cartdim, SSAIC::intdim});
     FL::GT::WilsonBMatrixAndInternalCoordinate(
         r.data_ptr<double>(),
@@ -67,18 +72,18 @@ compute_input_layer_and_JT(const at::Tensor & r) {
 
 at::Tensor compute_Hd(const at::Tensor & r) {
     std::vector<at::Tensor> input_layer = compute_input_layer(r);
-    at::Tensor Hd = Hd::compute_Hd(input_layer);
-    return Hd;
+    at::Tensor H = Hd::compute_Hd(input_layer);
+    return H;
 }
 
 std::tuple<at::Tensor, at::Tensor> compute_Ha_dHa(const at::Tensor & r) {
     // Input layer and J^T
     std::vector<at::Tensor> input_layer, JT;
-    for (auto & irred : input_layer) irred.set_requires_grad(true);
     std::tie(input_layer, JT) = compute_input_layer_and_JT(r);
+    for (auto & irred : input_layer) irred.set_requires_grad(true);
     // Compute diabatic quantity
     at::Tensor  H = Hd::compute_Hd(input_layer);
-    at::Tensor dH = H.new_empty({Hd::NStates, Hd::NStates, JT[0].size(0)});
+    at::Tensor dH = H.new_empty({Hd::NStates, Hd::NStates, SSAIC::cartdim});
     for (int i = 0; i < Hd::NStates; i++)
     for (int j = i; j < Hd::NStates; j++) {
         auto & irred = Hd::symmetry[i][j];
@@ -92,4 +97,18 @@ std::tuple<at::Tensor, at::Tensor> compute_Ha_dHa(const at::Tensor & r) {
     std::tie(energy, state) = H.symeig(true, true);
     dH = CL::TS::LA::UT_A3_U(dH, state);
     return std::make_tuple(energy, dH);
+}
+
+// Interoperability
+void compute_Hd(double * r_, double * H_) {
+    at::Tensor r = at::from_blob(r_, SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
+    at::Tensor H = compute_Hd(r);
+    std::memcpy(H_, H.data_ptr<double>(), H.numel() * sizeof(double));
+}
+void compute_Ha_dHa(double * r_, double * H_, double * dH_) {
+    at::Tensor r = at::from_blob(r_, SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
+    at::Tensor H, dH;
+    std::tie(H, dH) = compute_Ha_dHa(r);
+    std::memcpy(H_, H.data_ptr<double>(), H.numel() * sizeof(double));
+    std::memcpy(dH_, dH.data_ptr<double>(), dH.numel() * sizeof(double));
 }

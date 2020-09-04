@@ -1,8 +1,8 @@
 #include <omp.h>
 #include <torch/torch.h>
 
-#include <FortranLibrary.hpp>
 #include <CppLibrary/TorchSupport.hpp>
+#include <FortranLibrary.hpp>
 
 #include "SSAIC.hpp"
 #include "DimRed.hpp"
@@ -210,6 +210,7 @@ namespace FLopt {
             nets[i]->to(torch::kFloat64);
             nets[i]->copy(nets[0]);
             nets[i]->freeze(freeze_);
+            nets[i]->train();
         }
 
         GeomSet = GeomSet_;
@@ -255,6 +256,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
     net->to(torch::kFloat64);
     if (! chk.empty()) net->warmstart(chk[0], chk_depth);
     net->freeze(freeze);
+    net->train();
     std::cout << "Number of trainable network parameters = " << CL::TS::NParameters(net->parameters()) << '\n';
     // Read geometry set
     auto * GeomSet = AbInitio::read_GeomSet(data_set);

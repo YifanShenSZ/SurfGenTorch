@@ -8,10 +8,10 @@ In addition, geometries can be extracted alone to feed pretraining
 */
 
 #include <torch/torch.h>
-#include <FortranLibrary.hpp>
 
 #include <CppLibrary/utility.hpp>
 #include <CppLibrary/TorchSupport.hpp>
+#include <FortranLibrary.hpp>
 
 #include "SSAIC.hpp"
 #include "DimRed.hpp"

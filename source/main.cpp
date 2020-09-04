@@ -1,7 +1,6 @@
 #include <iostream>
 #include <torch/torch.h>
 
-#include <FortranLibrary.hpp>
 #include <CppLibrary/argparse.hpp>
 #include <CppLibrary/utility.hpp>
 
@@ -119,9 +118,10 @@ int main(int argc, const char** argv) {
     if (args.gotArgument("chk_depth")) chk_depth = args.retrieve<size_t>("chk_depth");
     size_t freeze;
     if (job == "pretrain")
-    freeze = (chk_depth < max_depth || max_depth == 0) ? chk_depth : 0;
+        freeze = (chk_depth < max_depth || max_depth == 0) ? chk_depth : 0;
     else
-    freeze = (chk_depth < max_depth || max_depth == 0) ? chk_depth-1 : 0;
+        freeze = (chk_depth < max_depth || max_depth == 0) ? 
+        (chk_depth > 0 ? chk_depth-1 : 0) : 0;
     if (args.gotArgument("freeze")) freeze = args.retrieve<size_t>("freeze");
     // for optimization
     std::string optimizer = "TR";

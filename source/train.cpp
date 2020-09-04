@@ -2,9 +2,9 @@
 #include <omp.h>
 #include <torch/torch.h>
 
-#include <FortranLibrary.hpp>
 #include <CppLibrary/utility.hpp>
 #include <CppLibrary/TorchSupport.hpp>
+#include <FortranLibrary.hpp>
 
 #include "Hd.hpp"
 #include "AbInitio.hpp"
@@ -27,7 +27,7 @@ void set_unit(const std::vector<AbInitio::RegData *> & RegSet) {
 }
 
 void define_Hd(const std::string & Hd_in, const size_t & max_depth, const size_t & freeze,
-const std::vector<std::string> & chk, const size_t & chk_depth, const std::vector<double> & guess_diag) {
+const std::vector<std::string> & chk, const size_t & chk_depth, std::vector<double> & guess_diag) {
     std::ifstream ifs; ifs.open(Hd_in);
         std::string line;
         std::vector<std::string> strs;
@@ -77,6 +77,7 @@ const std::vector<std::string> & chk, const size_t & chk_depth, const std::vecto
         }
     }
     else {
+        if (guess_diag.empty()) guess_diag = std::vector<double>(Hd::NStates, 0.0);
         assert(("Wrong number of initial guess of Hd diagonal", guess_diag.size() == Hd::NStates));
         for (int i = 0; i < Hd::NStates; i++)
         (*(Hd::nets[i][i]->fc[Hd::nets[i][i]->fc.size()-1]))->bias.data_ptr<double>()[0] = guess_diag[i];
@@ -84,6 +85,7 @@ const std::vector<std::string> & chk, const size_t & chk_depth, const std::vecto
     for (int i = 0; i < Hd::NStates; i++)
     for (int j = i; j < Hd::NStates; j++) {
         Hd::nets[i][j]->freeze(freeze);
+        Hd::nets[i][j]->train();
         std::cout << "Number of trainable network parameters for Hd" << i+1 << j+1 << " = "
             << CL::TS::NParameters(Hd::nets[i][j]->parameters()) << '\n';
     }
@@ -593,6 +595,7 @@ namespace FLopt {
                     nets[i][j]->to(torch::kFloat64);
                     nets[i][j]->copy(Hd::nets[i][j]);
                     nets[i][j]->freeze(freeze_);
+                    nets[i][j]->train();
                 }
             }
         }
@@ -655,7 +658,6 @@ const std::vector<std::string> & chk, const size_t & chk_depth, std::vector<doub
 const std::string & opt, const size_t & epoch, const size_t & batch_size, const double & learning_rate) {
     std::cout << "Start training\n";
     // Initialize network
-    if (guess_diag.empty()) guess_diag = std::vector<double>(Hd::NStates, 0.0);
     define_Hd(Hd_in, max_depth, freeze, chk, chk_depth, guess_diag);
     // Read data set
     AbInitio::DataSet<AbInitio::RegData> * RegSet;
@@ -718,7 +720,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                               << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << std::endl;
                     for (int i = 0; i < Hd::NStates; i++)
                     for (int j = i; j < Hd::NStates; j++)
-                    torch::save(Hd::nets[i][j], "Hd"+std::to_string(i)+std::to_string(j)+"_"+std::to_string(iepoch)+".net");
+                    torch::save(Hd::nets[i][j], "Hd"+std::to_string(i+1)+std::to_string(j+1)+"_"+std::to_string(iepoch)+".net");
                     torch::save(optimizer, "Hd_"+std::to_string(iepoch)+".opt");
                 }
             }
@@ -756,7 +758,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                               << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << std::endl;
                     for (int i = 0; i < Hd::NStates; i++)
                     for (int j = i; j < Hd::NStates; j++)
-                    torch::save(Hd::nets[i][j], "Hd"+std::to_string(i)+std::to_string(j)+"_"+std::to_string(iepoch)+".net");
+                    torch::save(Hd::nets[i][j], "Hd"+std::to_string(i+1)+std::to_string(j+1)+"_"+std::to_string(iepoch)+".net");
                     torch::save(optimizer, "Hd_"+std::to_string(iepoch)+".opt");
                 }
             }
@@ -772,7 +774,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                   << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << '\n';
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        torch::save(Hd::nets[i][j], "Hd"+std::to_string(i)+std::to_string(j)+".net");
+        torch::save(Hd::nets[i][j], "Hd"+std::to_string(i+1)+std::to_string(j+1)+".net");
     }
 }
 
