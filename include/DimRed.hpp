@@ -1,6 +1,8 @@
 /*
 A feedforward neural network to reduce dimensionality
 
+The 0th irreducible is assumed to be totally symmetric
+
 To maintain symmetry, the inputs must belong to a same irreducible
 */
 
@@ -15,8 +17,9 @@ struct Net : torch::nn::Module {
     std::vector<torch::nn::Linear *> fc, fc_inv;
 
     Net();
+    // Totally symmetric irreducible additionally has const term (bias)
     // max_depth == 0 means unlimited
-    Net(const size_t & init_dim, const size_t & max_depth = 0);
+    Net(const size_t & init_dim, const bool & totally_symmetric, const size_t & max_depth = 0);
     ~Net();
 
     at::Tensor reduce(const at::Tensor & x);

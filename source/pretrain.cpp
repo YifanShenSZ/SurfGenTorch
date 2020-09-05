@@ -206,7 +206,7 @@ namespace FLopt {
         nets.resize(OMP_NUM_THREADS);
         nets[0] = net_;
         for (int i = 1; i < OMP_NUM_THREADS; i++) {
-            nets[i] = std::make_shared<DimRed::Net>(SSAIC::NSAIC_per_irred[irred], nets[0]->fc.size());
+            nets[i] = std::make_shared<DimRed::Net>(SSAIC::NSAIC_per_irred[irred], irred == 0, nets[0]->fc.size());
             nets[i]->to(torch::kFloat64);
             nets[i]->copy(nets[0]);
             nets[i]->freeze(freeze_);
@@ -252,7 +252,7 @@ const std::vector<std::string> & chk, const size_t & chk_depth,
 const std::string & opt, const size_t & epoch, const size_t & batch_size, const double & learning_rate) {
     std::cout << "Start pretraining\n";
     // Initialize network
-    auto net = std::make_shared<DimRed::Net>(SSAIC::NSAIC_per_irred[irred], max_depth);
+    auto net = std::make_shared<DimRed::Net>(SSAIC::NSAIC_per_irred[irred], irred == 0, max_depth);
     net->to(torch::kFloat64);
     if (! chk.empty()) net->warmstart(chk[0], chk_depth);
     net->freeze(freeze);

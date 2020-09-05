@@ -1,9 +1,12 @@
 /*
 A feedforward neural network to reduce dimensionality
 
+The 0th irreducible is assumed to be totally symmetric
+
 To maintain symmetry:
     1. the inputs of a network must belong to a same irreducible
-    2. the activation functions must be even functions
+    2. the activation functions must be odd (except for the totally symmetric irreducible)
+    3. only the totally symmetric irreducible can have bias
 */
 
 #include <torch/torch.h>
@@ -16,8 +19,9 @@ To maintain symmetry:
 namespace DimRed {
 
 Net::Net() {}
+// Totally symmetric irreducible additionally has const term (bias)
 // max_depth == 0 means unlimited
-Net::Net(const size_t & init_dim, const size_t & max_depth) {
+Net::Net(const size_t & init_dim, const bool & totally_symmetric, const size_t & max_depth) {
     // Determine depth
     size_t depth = init_dim - 1;
     if (max_depth > 0 && depth > max_depth) depth = max_depth;
@@ -28,7 +32,7 @@ Net::Net(const size_t & init_dim, const size_t & max_depth) {
         * fc[i] = register_module("fc-"+std::to_string(i),
             torch::nn::Linear(torch::nn::LinearOptions(
             init_dim - i, init_dim - i - 1)
-            .bias(false)));
+            .bias(totally_symmetric)));
     }
     // Fully connected layer to inverse the reduction
     fc_inv.resize(depth);
@@ -37,7 +41,7 @@ Net::Net(const size_t & init_dim, const size_t & max_depth) {
         * fc_inv[i] = register_module("fc_inv-"+std::to_string(i),
             torch::nn::Linear(torch::nn::LinearOptions(
             init_dim - i - 1, init_dim - i)
-            .bias(false)));
+            .bias(totally_symmetric)));
     }
 }
 Net::~Net() {}
@@ -78,13 +82,21 @@ void Net::copy(const std::shared_ptr<Net> & net) {
         std::memcpy((*fc[i])->weight.data_ptr<double>(),
                     (*(net->fc[i]))->weight.data_ptr<double>(),
                     (*fc[i])->weight.numel() * sizeof(double));
+        if ((*fc[i])->options.bias())
+        std::memcpy((*fc[i])->bias.data_ptr<double>(),
+                    (*(net->fc[i]))->bias.data_ptr<double>(),
+                    (*fc[i])->bias.numel() * sizeof(double));
         std::memcpy((*fc_inv[i])->weight.data_ptr<double>(),
                     (*(net->fc_inv[i]))->weight.data_ptr<double>(),
                     (*fc_inv[i])->weight.numel() * sizeof(double));
+        if ((*fc_inv[i])->options.bias())
+        std::memcpy((*fc_inv[i])->bias.data_ptr<double>(),
+                    (*(net->fc_inv[i]))->bias.data_ptr<double>(),
+                    (*fc_inv[i])->bias.numel() * sizeof(double));
     }
 }
 void Net::warmstart(const std::string & chk, const size_t & chk_depth) {
-    auto warm_net = std::make_shared<Net>((*fc[0])->options.in_features(), chk_depth);
+    auto warm_net = std::make_shared<Net>((*fc[0])->options.in_features(), (*fc[0])->options.bias(), chk_depth);
     warm_net->to(torch::kFloat64);
     torch::load(warm_net, chk);
     this->copy(warm_net);
@@ -92,8 +104,10 @@ void Net::warmstart(const std::string & chk, const size_t & chk_depth) {
 }
 void Net::freeze(const size_t & freeze) {
     for (size_t i = 0; i < freeze; i++) {
-        (*fc    [i])->weight.set_requires_grad(false);
+        (*fc[i])->weight.set_requires_grad(false);
+        (*fc[i])->bias  .set_requires_grad(false);
         (*fc_inv[i])->weight.set_requires_grad(false);
+        (*fc_inv[i])->bias  .set_requires_grad(false);
     }
 }
 
@@ -125,7 +139,7 @@ void define_DimRed(const std::string & DimRed_in) {
     // Initialize networks
     nets.resize(NIrred);
     for (size_t i = 0; i < NIrred; i++) {
-        nets[i] = std::make_shared<Net>(std::stoul(init_dims[i]), net_depths[i]);
+        nets[i] = std::make_shared<Net>(std::stoul(init_dims[i]), i == 0, net_depths[i]);
         nets[i]->to(torch::kFloat64);
         torch::load(nets[i], net_pars[i]);
         nets[i]->eval();

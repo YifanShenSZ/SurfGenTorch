@@ -1,4 +1,8 @@
-// A feedforward neural network to compute diabatic Hamiltonian (Hd)
+/*
+A feedforward neural network to compute diabatic Hamiltonian (Hd)
+
+The 0th irreducible is assumed to be totally symmetric
+*/
 
 #ifndef Hd_hpp
 #define Hd_hpp

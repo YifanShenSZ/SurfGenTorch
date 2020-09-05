@@ -5,7 +5,9 @@ SurfGenTorch first contracts scaled and symmetry adapted internal coordinates wi
 
 ## Network structure
 The networks utilized here are simple feedforward neural networks, with CNPI group symmetry taken into account:
-* To maintain symmetry, only odd activation is allowed (except for the totally symmetric irreducible)
+* The inputs of a network must belong to a same irreducible
+* The activation functions must be odd (except for the totally symmetric irreducible)
+* Only the totally symmetric irreducible can have bias
 
 Dimensionality reduction network:
 * Coordinates of each irreducible representation of the CNPI group are contracted with a network

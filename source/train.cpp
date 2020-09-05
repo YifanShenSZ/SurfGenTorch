@@ -62,8 +62,7 @@ const std::vector<std::string> & chk, const size_t & chk_depth, std::vector<doub
     for (int i = 0; i < Hd::NStates; i++) {
         Hd::nets[i].resize(Hd::NStates);
         for (int j = i; j < Hd::NStates; j++) {
-            Hd::nets[i][j] = std::make_shared<Hd::Net>(NInput_per_irred[Hd::symmetry[i][j]],
-                Hd::symmetry[i][j] == 0, max_depth);
+            Hd::nets[i][j] = std::make_shared<Hd::Net>(NInput_per_irred[Hd::symmetry[i][j]], Hd::symmetry[i][j] == 0, max_depth);
             Hd::nets[i][j]->to(torch::kFloat64);
         }
     }
