@@ -106,7 +106,7 @@ const std::vector<at::Tensor> & x, const std::vector<at::Tensor> & JT) {
     }
     // Transform to adiabatic representation
     at::Tensor energy, state;
-    std::tie(energy, state) = H.symeig(true, true);
+    std::tie(energy, state) = H.symeig(true);
     dH = CL::TS::LA::UT_A3_U(dH, state);
     return std::make_tuple(energy, dH);
 }
@@ -249,7 +249,7 @@ namespace FLopt {
         }
         // Transform to adiabatic representation
         at::Tensor energy, state;
-        std::tie(energy, state) = H.symeig(true, true);
+        std::tie(energy, state) = H.symeig(true);
         dH = CL::TS::LA::UT_A3_U(dH, state);
         return std::make_tuple(energy, dH);
     }
@@ -638,7 +638,10 @@ namespace FLopt {
         NEq += (DegSet[i]->dH.size(0)+1)*DegSet[i]->dH.size(0)/2 * (1 + DegSet[i]->dH.size(2));
         std::cout << "The data set corresponds to " << NEq << " least square equations" << std::endl;
         // Train
-        if (opt == "CG") {
+        if (opt == "SD") {
+            FL::NO::SteepestDescent(loss, grad, loss_grad, c, Nc, false, true, epoch);
+        }
+        else if (opt == "CG") {
             FL::NO::ConjugateGradient(loss, grad, loss_grad, c, Nc, "DY", false, true, epoch);
         } else {
             for (auto & data : RegSet) data->weight = std::sqrt(data->weight);

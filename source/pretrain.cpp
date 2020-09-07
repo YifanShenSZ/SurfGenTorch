@@ -235,7 +235,10 @@ namespace FLopt {
         int NEq = SSAIC::NSAIC_per_irred[irred] * OMP_NUM_THREADS * (GeomSet.size() / OMP_NUM_THREADS);
         std::cout << "The data set corresponds to " << NEq << " least square equations" << std::endl;
         // Train
-        if (opt == "CG") {
+        if (opt == "SD") {
+            FL::NO::SteepestDescent(loss, grad, loss_grad, c, Nc, false, true, epoch);
+        }
+        else if (opt == "CG") {
             FL::NO::ConjugateGradient(loss, grad, loss_grad, c, Nc, "DY", false, true, epoch);
         } else {
             FL::NO::TrustRegion(residue, Jacobian, c, NEq, Nc, true, epoch);

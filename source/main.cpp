@@ -23,7 +23,7 @@ argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
     parser.add_argument("--chk_depth", 1, true, "max depth of the trained network, default = max_depth");
     parser.add_argument("-f","--freeze", 1, true, "freeze leading training layers, default = chk_depth < max_depth ? inherited layers : 0");
     // for optimization
-    parser.add_argument("-o","--optimizer", 1, true, "Adam, SGD, CG, TR (default = TR)");
+    parser.add_argument("-o","--optimizer", 1, true, "Adam, SGD, SD, CG, TR (default = TR)");
     parser.add_argument("-e","--epoch", 1, true, "default = 1000");
     parser.add_argument("-b","--batch_size", 1, true, "batch size for Adam & SGD (default = 32)");
     parser.add_argument("-l","--learning_rate", 1, true, "learning rate for Adam & SGD (default = 0.001)");

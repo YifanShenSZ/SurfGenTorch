@@ -2,7 +2,7 @@
 An evaluation library for SurfGenTorch
 
 Input: Cartesian coordinate
-Output: Hd, dHd
+Output: Hd, dHd, energy, dHa
 
 The higher order gradients cannot be calculated,
 since SurfGenTorch adopts scaled and symmetry adapted internal coordinate
@@ -76,7 +76,34 @@ at::Tensor compute_Hd(const at::Tensor & r) {
     return H;
 }
 
-std::tuple<at::Tensor, at::Tensor> compute_Ha_dHa(const at::Tensor & r) {
+std::tuple<at::Tensor, at::Tensor> compute_Hd_dHd(const at::Tensor & r) {
+    // Input layer and J^T
+    std::vector<at::Tensor> input_layer, JT;
+    std::tie(input_layer, JT) = compute_input_layer_and_JT(r);
+    for (auto & irred : input_layer) irred.set_requires_grad(true);
+    // Compute diabatic quantity
+    at::Tensor  H = Hd::compute_Hd(input_layer);
+    at::Tensor dH = H.new_empty({Hd::NStates, Hd::NStates, SSAIC::cartdim});
+    for (int i = 0; i < Hd::NStates; i++)
+    for (int j = i; j < Hd::NStates; j++) {
+        auto & irred = Hd::symmetry[i][j];
+        auto & g = input_layer[irred].grad();
+        if (g.defined()) {g.detach_(); g.zero_();}
+        H[i][j].backward({}, true);
+        dH[i][j] = JT[irred].mv(g);
+    }
+    return std::make_tuple(H, dH);
+}
+
+at::Tensor compute_energy(const at::Tensor & r) {
+    std::vector<at::Tensor> input_layer = compute_input_layer(r);
+    at::Tensor H = Hd::compute_Hd(input_layer);
+    at::Tensor energy, state;
+    std::tie(energy, state) = H.symeig();
+    return energy;
+}
+
+std::tuple<at::Tensor, at::Tensor> compute_energy_dH(const at::Tensor & r) {
     // Input layer and J^T
     std::vector<at::Tensor> input_layer, JT;
     std::tie(input_layer, JT) = compute_input_layer_and_JT(r);
@@ -94,7 +121,7 @@ std::tuple<at::Tensor, at::Tensor> compute_Ha_dHa(const at::Tensor & r) {
     }
     // Transform to adiabatic representation
     at::Tensor energy, state;
-    std::tie(energy, state) = H.symeig(true, true);
+    std::tie(energy, state) = H.symeig(true);
     dH = CL::TS::LA::UT_A3_U(dH, state);
     return std::make_tuple(energy, dH);
 }
@@ -105,10 +132,10 @@ void compute_Hd(double * r_, double * H_) {
     at::Tensor H = compute_Hd(r);
     std::memcpy(H_, H.data_ptr<double>(), H.numel() * sizeof(double));
 }
-void compute_Ha_dHa(double * r_, double * H_, double * dH_) {
+void compute_energy_dH(double * r_, double * energy_, double * dH_) {
     at::Tensor r = at::from_blob(r_, SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
-    at::Tensor H, dH;
-    std::tie(H, dH) = compute_Ha_dHa(r);
-    std::memcpy(H_, H.data_ptr<double>(), H.numel() * sizeof(double));
+    at::Tensor energy, dH;
+    std::tie(energy, dH) = compute_energy_dH(r);
+    std::memcpy(energy_, energy.data_ptr<double>(), energy.numel() * sizeof(double));
     std::memcpy(dH_, dH.data_ptr<double>(), dH.numel() * sizeof(double));
 }

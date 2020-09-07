@@ -145,7 +145,6 @@ void define_SSAIC(const std::string & SSAIC_in) {
     // Define internal coordinate
     std::tie(intdim, IntCoordDef) = FL::GT::FetchInternalCoordinateDefinition(format, IntCoordDef_file);
     std::tie(intdim, DefID) = FL::GT::DefineInternalCoordinate(format, IntCoordDef_file);
-    std::cout << "Number of internal coordinates: " << intdim << '\n';
     // Generate self_scaling and self_complete matrices
     self_scaling = at::zeros({intdim, intdim}, top);
     self_complete = at::eye(intdim, top);
