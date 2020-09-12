@@ -15,6 +15,10 @@ Symmetric high order tensor definition:
 #include <torch/torch.h>
 
 namespace CL { namespace TS { namespace LA {
+    double triple_product(const at::Tensor & a, const at::Tensor & b, const at::Tensor & c) {
+        return (c[0]*(a[1]*b[2]-a[2]*b[1])-c[1]*(a[0]*b[2]-a[2]*b[0])+c[2]*(a[0]*b[1]-a[1]*b[0])).item<double>();
+    }
+
     // Matrix dot multiplication for 3rd-order tensor A and B
     // A.size(2) == B.size(2), A.size(1) == B.size(0)
     // result_ij = A_ikm * B_kjm

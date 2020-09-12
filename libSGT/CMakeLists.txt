@@ -18,6 +18,7 @@ set(CLSOURCE
     ../Cpp-Library_v1.0.0/source/LinearAlgebra.cpp
     ../Cpp-Library_v1.0.0/source/TorchSupport/utility.cpp
     ../Cpp-Library_v1.0.0/source/TorchSupport/LinearAlgebra.cpp
+    ../Cpp-Library_v1.0.0/source/TorchSupport/InternalCoordinate.cpp
     ../Cpp-Library_v1.0.0/source/TorchSupport/chemistry.cpp)
 
 include_directories(../include)

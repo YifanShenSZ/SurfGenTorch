@@ -15,13 +15,11 @@ In addition, geometries can be extracted alone to feed pretraining
 namespace AbInitio {
 
 class GeomLoader { public:
-    at::Tensor cartgeom, intgeom;
+    at::Tensor r, q;
 
     GeomLoader();
-    GeomLoader(const int & cartdim, const int & intdim);
     ~GeomLoader();
 
-    void init(const int & cartdim, const int & intdim);
     void cart2int();
 };
 
@@ -34,13 +32,12 @@ class geom { public:
 };
 
 class DataLoader : public GeomLoader { public:
-    at::Tensor BT, energy, dH;
+    at::Tensor J, energy, dH;
 
     DataLoader();
-    DataLoader(const int & cartdim, const int & intdim, const int & NStates);
     ~DataLoader();
 
-    void init(const int & cartdim, const int & intdim, const int & NStates);
+    void init(const int64_t & NStates);
     void cart2int();
     void SubtractRef(const double & zero_point);
 };

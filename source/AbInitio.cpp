@@ -11,7 +11,6 @@ In addition, geometries can be extracted alone to feed pretraining
 
 #include <CppLibrary/utility.hpp>
 #include <CppLibrary/TorchSupport.hpp>
-#include <FortranLibrary.hpp>
 
 #include "SSAIC.hpp"
 #include "DimRed.hpp"
@@ -22,52 +21,30 @@ namespace AbInitio {
 
 const double DegThresh = 0.0001;
 
-GeomLoader::GeomLoader() {}
-GeomLoader::GeomLoader(const int & cartdim, const int & intdim) {
-    c10::TensorOptions top = at::TensorOptions().dtype(torch::kFloat64);
-    this->cartgeom = at::empty(cartdim, top);
-    this->intgeom  = at::empty(intdim , top);
+GeomLoader::GeomLoader() {
+    r = at::empty(SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
 }
 GeomLoader::~GeomLoader() {}
-void GeomLoader::init(const int & cartdim, const int & intdim) {
-    c10::TensorOptions top = at::TensorOptions().dtype(torch::kFloat64);
-    this->cartgeom = at::empty(cartdim, top);
-    this->intgeom  = at::empty(intdim , top);
-}
 void GeomLoader::cart2int() {
-    FL::GT::InternalCoordinate(
-        cartgeom.data_ptr<double>(), intgeom.data_ptr<double>(),
-        cartgeom.size(0), intgeom.size(0));
+    q = CL::TS::IC::compute_IC(r);
 }
 
 geom::geom() {}
 geom::geom(const GeomLoader & loader) {
-    SAIgeom = SSAIC::compute_SSAIC(loader.intgeom);
+    SAIgeom = SSAIC::compute_SSAIC(loader.q);
 }
 geom::~geom() {}
 
 DataLoader::DataLoader() {}
-DataLoader::DataLoader(const int & cartdim, const int & intdim, const int & NStates)
-: GeomLoader::GeomLoader(cartdim, intdim) {
-    c10::TensorOptions top = at::TensorOptions().dtype(torch::kFloat64);
-    this->BT     = at::empty({cartdim, intdim}, top);
-    this->energy = at::empty(NStates, top);
-    this->dH     = at::empty({NStates, NStates, cartdim}, top);
-}
 DataLoader::~DataLoader() {}
-void DataLoader::init(const int & cartdim, const int & intdim, const int & NStates)  {
+void DataLoader::init(const int64_t & NStates)  {
     c10::TensorOptions top = at::TensorOptions().dtype(torch::kFloat64);
-    this->cartgeom = at::empty(cartdim, top);
-    this->intgeom  = at::empty(intdim , top);
-    this->BT       = at::empty({cartdim, intdim}, top);
-    this->energy   = at::empty(NStates, top);
-    this->dH       = at::empty({NStates, NStates, cartdim}, top);
+    this->r      = at::empty(SSAIC::cartdim, top);
+    this->energy = at::empty(NStates, top);
+    this->dH     = at::empty({NStates, NStates, SSAIC::cartdim}, top);
 }
 void DataLoader::cart2int() {
-    FL::GT::WilsonBMatrixAndInternalCoordinate(
-        cartgeom.data_ptr<double>(),
-        BT.data_ptr<double>(), intgeom.data_ptr<double>(),
-        cartgeom.size(0), intgeom.size(0));
+    std::tie(q, J) = CL::TS::IC::compute_IC_J(r);
 }
 void DataLoader::SubtractRef(const double & zero_point) {
     energy -= zero_point;
@@ -77,8 +54,9 @@ void DataLoader::SubtractRef(const double & zero_point) {
 RegData::RegData() {}
 RegData::RegData(DataLoader & loader) {
     // input_layer and J^T
-    loader.intgeom.set_requires_grad(true);
-    std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(loader.intgeom);
+    at::Tensor & q = loader.q;
+    q.set_requires_grad(true);
+    std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
     std::vector<at::Tensor> InpLay = Hd::input::input_layer(Redgeom);
     input_layer.resize(InpLay.size());
@@ -88,18 +66,16 @@ RegData::RegData(DataLoader & loader) {
     }
     JT.resize(InpLay.size());
     for (size_t irred = 0; irred < InpLay.size(); irred++) {
-        at::Tensor dinput_layer_divide_dintgeom = at::empty(
-            {InpLay[irred].size(0), loader.intgeom.size(0)},
+        at::Tensor J_InpLay_q = at::empty(
+            {InpLay[irred].size(0), q.size(0)},
             at::TensorOptions().dtype(torch::kFloat64));
         for (size_t i = 0; i < InpLay[irred].size(0); i++) {
-            if (loader.intgeom.grad().defined()) {
-                loader.intgeom.grad().detach_();
-                loader.intgeom.grad().zero_();
-            };
+            at::Tensor & g = q.grad();
+            if (g.defined()) {g.detach_(); g.zero_();};
             InpLay[irred][i].backward({}, true);
-            dinput_layer_divide_dintgeom[i].copy_(loader.intgeom.grad());
+            J_InpLay_q[i].copy_(g);
         }
-        JT[irred] = loader.BT.mm(dinput_layer_divide_dintgeom.transpose(0, 1));
+        JT[irred] = (J_InpLay_q.mm(loader.J)).transpose(0, 1);
     }
     // energy and dH
     energy = loader.energy.clone();
@@ -117,8 +93,9 @@ void RegData::adjust_weight(const double & Ethresh) {
 DegData::DegData() {}
 DegData::DegData(DataLoader & loader) {
     // input_layer and J^T
-    loader.intgeom.set_requires_grad(true);
-    std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(loader.intgeom);
+    at::Tensor & q = loader.q;
+    q.set_requires_grad(true);
+    std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
     std::vector<at::Tensor> InpLay = Hd::input::input_layer(Redgeom);
     input_layer.resize(InpLay.size());
@@ -128,18 +105,16 @@ DegData::DegData(DataLoader & loader) {
     }
     JT.resize(InpLay.size());
     for (size_t irred = 0; irred < InpLay.size(); irred++) {
-        at::Tensor dinput_layer_divide_dintgeom = at::empty(
-            {InpLay[irred].size(0), loader.intgeom.size(0)},
+        at::Tensor J_InpLay_q = at::empty(
+            {InpLay[irred].size(0), q.size(0)},
             at::TensorOptions().dtype(torch::kFloat64));
         for (size_t i = 0; i < InpLay[irred].size(0); i++) {
-            if (loader.intgeom.grad().defined()) {
-                loader.intgeom.grad().detach_();
-                loader.intgeom.grad().zero_();
-            };
+            at::Tensor & g = q.grad();
+            if (g.defined()) {g.detach_(); g.zero_();};
             InpLay[irred][i].backward({}, true);
-            dinput_layer_divide_dintgeom[i].copy_(loader.intgeom.grad());
+            J_InpLay_q[i].copy_(g);
         }
-        JT[irred] = loader.BT.mm(dinput_layer_divide_dintgeom.transpose(0, 1));
+        JT[irred] = (J_InpLay_q.mm(loader.J)).transpose(0, 1);
     }
     // H and dH
     H = loader.energy; dH = loader.dH;
@@ -163,16 +138,15 @@ DataSet<geom> * read_GeomSet(const std::vector<std::string> & data_set) {
     for (size_t its = 0; its < data_set.size(); its++) {
         // raw data loader
         GeomLoader * RawGeomLoader = new GeomLoader[NDataPerSet[its]];
-        for (size_t i = 0; i < NDataPerSet[its]; i++) RawGeomLoader[i].init(SSAIC::cartdim, SSAIC::intdim);
-        // cartgeom
+        // r
         std::ifstream ifs; ifs.open(data_set[its]+"geom.data");
             for (size_t i = 0; i < NDataPerSet[its]; i++)
             for (size_t j = 0; j < SSAIC::cartdim / 3; j++) {
                 std::string line; ifs >> line;
                 double dbletemp;
-                ifs >> dbletemp; RawGeomLoader[i].cartgeom[3*j  ] = dbletemp;
-                ifs >> dbletemp; RawGeomLoader[i].cartgeom[3*j+1] = dbletemp;
-                ifs >> dbletemp; RawGeomLoader[i].cartgeom[3*j+2] = dbletemp;
+                ifs >> dbletemp; RawGeomLoader[i].r[3*j  ] = dbletemp;
+                ifs >> dbletemp; RawGeomLoader[i].r[3*j+1] = dbletemp;
+                ifs >> dbletemp; RawGeomLoader[i].r[3*j+2] = dbletemp;
             }
         ifs.close();
         // Process raw data
@@ -215,26 +189,26 @@ const double & zero_point, const double & weight) {
         // NStates
         ifs.open(data_set[its]+"energy.data"); std::getline(ifs, line); ifs.close();
         CL::utility::split(line, strs);
-        int NStates = strs.size();
+        int64_t NStates = strs.size();
         std::ifstream ifs_valid_states; ifs_valid_states.open(data_set[its]+"valid_states");
             if (ifs_valid_states.good()) {
-                int valid_states;
+                int64_t valid_states;
                 ifs_valid_states >> valid_states;
                 NStates = valid_states < NStates ? valid_states: NStates;
             }
         ifs_valid_states.close();
         // raw data loader
         DataLoader * RawDataLoader = new DataLoader[NDataPerSet[its]];
-        for (size_t i = 0; i < NDataPerSet[its]; i++) RawDataLoader[i].init(SSAIC::cartdim, SSAIC::intdim, NStates);
-        // cartgeom
+        for (size_t i = 0; i < NDataPerSet[its]; i++) RawDataLoader[i].init(NStates);
+        // r
         ifs.open(data_set[its]+"geom.data");
             for (size_t i = 0; i < NDataPerSet[its]; i++)
             for (size_t j = 0; j < SSAIC::cartdim / 3; j++) {
                 std::string line; ifs >> line;
                 double dbletemp;
-                ifs >> dbletemp; RawDataLoader[i].cartgeom[3*j  ] = dbletemp;
-                ifs >> dbletemp; RawDataLoader[i].cartgeom[3*j+1] = dbletemp;
-                ifs >> dbletemp; RawDataLoader[i].cartgeom[3*j+2] = dbletemp;
+                ifs >> dbletemp; RawDataLoader[i].r[3*j  ] = dbletemp;
+                ifs >> dbletemp; RawDataLoader[i].r[3*j+1] = dbletemp;
+                ifs >> dbletemp; RawDataLoader[i].r[3*j+2] = dbletemp;
             }
         ifs.close();
         // energy

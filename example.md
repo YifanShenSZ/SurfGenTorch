@@ -21,7 +21,7 @@ Based on accuray on minimal data set, the depth of each network is:
 | irred | max depth | tol depth | goal depth | ideal depth |
 |-------|-----------|-----------|------------|-------------|
 |  A1   |    12     |    12     |    11      |     11      |
-|  B1   |     6     |     6     |   4 ? 5    |      4      |
+|  B1   |     6     |     6     |     5      |      5      |
 |  B2   |    11     |    11     |    10      |      9      |
 |  A2   |     3     |     3     |     2      |    1 ? 2    |
 

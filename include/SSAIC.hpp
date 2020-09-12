@@ -8,11 +8,11 @@
 namespace SSAIC {
 
 // Internal coordinate dimension, not necessarily = cartdim - 6 or 5
-extern int intdim;
+extern int64_t intdim;
 // The ID of this internal coordinate definition
-extern int DefID;
+extern size_t DefID;
 // Cartesian coordinate dimension
-extern int cartdim;
+extern int64_t cartdim;
 
 // Number of irreducible representations
 extern size_t NIrred;

@@ -27,6 +27,8 @@ Symmetric high order tensor definition:
     3rd-order tensor: A_ijk = A_jik
 */
 namespace LA {
+    double triple_product(const at::Tensor & a, const at::Tensor & b, const at::Tensor & c);
+
     // Matrix dot multiplication for 3rd-order tensor A and B
     // A.size(2) == B.size(2), A.size(1) == B.size(0)
     // result_ij = A_ikm * B_kjm
@@ -44,6 +46,55 @@ namespace LA {
     void UT_A3_U_InPlace(const at::Tensor & UT, at::Tensor & A, const at::Tensor & U);
     void UT_A3_U_InPlace(at::Tensor & A, const at::Tensor & U);
 } // namespace LA
+
+/*
+Internal coordinate for libtorch
+
+This module does not provide the linear combination
+
+Nomenclature:
+    cartdim & intdim: Cartesian & internal space dimensionality
+    r: Cartesian coordinate vector
+    q: internal coordinate vector
+    J: the Jacobian matrix of q over r
+*/
+namespace IC {
+    struct InvolvedMotion {
+        // Motion type
+        std::string type;
+        // Involved atoms
+        std::vector<size_t> atom;
+        // Linear combination coefficient
+        double coeff;
+        // For torsion only, deafult = -pi
+        // if (the dihedral angle < min)       angle += 2pi
+        // if (the dihedral angle > min + 2pi) angle -= 2pi
+        double min;
+
+        InvolvedMotion();
+        InvolvedMotion(const std::string & type, const std::vector<size_t> & atom, const double & coeff, const double & min = -M_PI);
+        ~InvolvedMotion();
+    };
+    struct IntCoordDef {
+        std::vector<InvolvedMotion> motion;
+    
+        IntCoordDef();
+        ~IntCoordDef();
+    };
+
+    // Store different internal coordinate definitions
+    extern std::vector<std::vector<IntCoordDef>> definitions;
+
+    // Input:  file format (Columbus7, default), internal coordinate definition file
+    // Output: intdim, internal coordinate definition ID
+    std::tuple<int64_t, size_t> define_IC(const std::string & format, const std::string & file);
+
+    // Convert r to q according to ID-th internal coordinate definition
+    at::Tensor compute_IC(const at::Tensor & r, const size_t & ID = 0);
+
+    // From r, generate q & J according to ID-th internal coordinate definition
+    std::tuple<at::Tensor, at::Tensor> compute_IC_J(const at::Tensor & r, const size_t & ID = 0);
+}
 
 namespace chemistry {
     bool check_degeneracy(const double & threshold, const at::Tensor & energy);

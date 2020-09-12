@@ -13,7 +13,6 @@ which means this Jacobian cannot enjoy pytorch automatic differentiation
 #include <torch/torch.h>
 
 #include <CppLibrary/TorchSupport.hpp>
-#include <FortranLibrary.hpp>
 
 #include "SSAIC.hpp"
 #include "DimRed.hpp"
@@ -27,10 +26,7 @@ void initialize_libSGT(const std::string & SSAIC_in, const std::string & DimRed_
 
 std::vector<at::Tensor> compute_input_layer(const at::Tensor & r) {
     // cart2int
-    at::Tensor q = r.new_empty(SSAIC::intdim);
-    FL::GT::InternalCoordinate(
-        r.data_ptr<double>(), q.data_ptr<double>(),
-        SSAIC::cartdim, SSAIC::intdim, SSAIC::DefID);
+    at::Tensor q = CL::TS::IC::compute_IC(r, SSAIC::DefID);
     // input_layer
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
@@ -41,12 +37,8 @@ std::vector<at::Tensor> compute_input_layer(const at::Tensor & r) {
 std::tuple<std::vector<at::Tensor>, std::vector<at::Tensor>>
 compute_input_layer_and_JT(const at::Tensor & r) {
     // cart2int
-    at::Tensor q = r.new_empty(SSAIC::intdim);
-    at::Tensor BT = r.new_empty({SSAIC::cartdim, SSAIC::intdim});
-    FL::GT::WilsonBMatrixAndInternalCoordinate(
-        r.data_ptr<double>(),
-        BT.data_ptr<double>(), q.data_ptr<double>(),
-        SSAIC::cartdim, SSAIC::intdim, SSAIC::DefID);
+    at::Tensor q, J;
+    std::tie(q, J) = CL::TS::IC::compute_IC_J(r, SSAIC::DefID);
     // input_layer
     q.set_requires_grad(true);
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
@@ -57,15 +49,16 @@ compute_input_layer_and_JT(const at::Tensor & r) {
     // J^T
     std::vector<at::Tensor> JT(InpLay.size());
     for (size_t irred = 0; irred < InpLay.size(); irred++) {
-        at::Tensor dinput_layer_divide_dintgeom = at::empty(
+        at::Tensor J_InpLay_q = at::empty(
             {InpLay[irred].size(0), q.size(0)},
             at::TensorOptions().dtype(torch::kFloat64));
         for (size_t i = 0; i < InpLay[irred].size(0); i++) {
-            if (q.grad().defined()) {q.grad().detach_(); q.grad().zero_();}
+            at::Tensor & g = q.grad();
+            if (g.defined()) {g.detach_(); g.zero_();};
             InpLay[irred][i].backward({}, true);
-            dinput_layer_divide_dintgeom[i].copy_(q.grad());
+            J_InpLay_q[i].copy_(g);
         }
-        JT[irred] = BT.mm(dinput_layer_divide_dintgeom.transpose(0, 1));
+        JT[irred] = (J_InpLay_q.mm(J)).transpose(0, 1);
     }
     return std::make_tuple(input_layer, JT);
 }

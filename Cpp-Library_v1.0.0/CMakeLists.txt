@@ -12,6 +12,7 @@ add_library(CL STATIC
     source/LinearAlgebra.cpp
     source/TorchSupport/utility.cpp
     source/TorchSupport/LinearAlgebra.cpp
+    source/TorchSupport/InternalCoordinate.cpp
     source/TorchSupport/chemistry.cpp
 )
 
