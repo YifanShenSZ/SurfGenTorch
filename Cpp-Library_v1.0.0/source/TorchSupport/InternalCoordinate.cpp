@@ -8,6 +8,14 @@ Nomenclature:
     r: Cartesian coordinate vector
     q: internal coordinate vector
     J: the Jacobian matrix of q over r
+
+Warning:
+    * J of bending is singular at 0 or pi,
+      so please avoid using bending in those cases
+    * J of out of plane is singular at +-pi/2,
+      so please avoid using out of plane in those cases
+    * Backward propagation through q may be problematic for torsion when q = 0 or pi,
+      so please use J explicitly in those cases
 */
 
 #include <torch/torch.h>
@@ -178,7 +186,10 @@ namespace CL { namespace TS { namespace IC {
                                    - r.slice(0, 3 * atom[2], 3 * atom[2] + 3);
                     at::Tensor n123 = r12.cross(r23); n123 /= n123.norm();
                     at::Tensor n234 = r23.cross(r34); n234 /= n234.norm();
-                    at::Tensor theta = at::acos(n123.dot(n234));
+                    at::Tensor theta = n123.dot(n234);
+                    if (theta.item<double>() > 1.0) theta.fill_(0.0);
+                    else if (theta.item<double>() < -1.0) theta.fill_(M_PI);
+                    else theta = at::acos(theta);
                     if(CL::TS::LA::triple_product(n123, n234, r23) < 0.0) theta = -theta;
                     if(theta.item<double>() < min) theta += 2.0 * M_PI;
                     else if(theta.item<double>() > min + 2.0 * M_PI) theta -= 2.0 * M_PI;
@@ -262,7 +273,10 @@ namespace CL { namespace TS { namespace IC {
                     at::Tensor sin234 = at::sqrt(1.0 - cos234*cos234);
                     at::Tensor n123 = runit12.cross(runit23) / sin123;
                     at::Tensor n234 = runit23.cross(runit34) / sin234;
-                    at::Tensor theta = at::acos(n123.dot(n234));
+                    at::Tensor theta = n123.dot(n234);
+                    if (theta.item<double>() > 1.0) theta.fill_(0.0);
+                    else if (theta.item<double>() < -1.0) theta.fill_(M_PI);
+                    else theta = at::acos(theta);
                     if(CL::TS::LA::triple_product(n123, n234, r23) < 0.0) theta = -theta;
                     if(theta.item<double>() < min) theta += 2.0 * M_PI;
                     else if(theta.item<double>() > min + 2.0 * M_PI) theta -= 2.0 * M_PI;

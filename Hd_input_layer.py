@@ -30,7 +30,7 @@ degree_of_freedom = 4
 
 # 1st element in tuple tells the order, others are the coordinates following this order
 polynomial_specification = [ 
-    (2, [[1], [1], [1], [1]])
+    (4, [[1], [1], [1], [1]])
 ]
 ''' End of user input '''
 

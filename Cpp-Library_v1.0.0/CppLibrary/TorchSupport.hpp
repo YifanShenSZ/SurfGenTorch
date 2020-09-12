@@ -48,15 +48,23 @@ namespace LA {
 } // namespace LA
 
 /*
-Internal coordinate for libtorch
-
-This module does not provide the linear combination
+An interal coordinate is the linear combination of several translationally and rotationally invariant displacements
+but only displacements under same unit can be combined, i.e. you must treat lengthes and angles separately
+unless appropriate metric tensor is applied
 
 Nomenclature:
     cartdim & intdim: Cartesian & internal space dimensionality
     r: Cartesian coordinate vector
     q: internal coordinate vector
     J: the Jacobian matrix of q over r
+
+Warning:
+    * J of bending is singular at 0 or pi,
+      so please avoid using bending in those cases
+    * J of out of plane is singular at +-pi/2,
+      so please avoid using out of plane in those cases
+    * Backward propagation through q may be problematic for torsion when q = 0 or pi,
+      so please use J explicitly in those cases
 */
 namespace IC {
     struct InvolvedMotion {
