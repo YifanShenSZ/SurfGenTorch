@@ -13,6 +13,8 @@ extern int64_t intdim;
 extern size_t DefID;
 // Cartesian coordinate dimension
 extern int64_t cartdim;
+// Internal coordinate origin
+extern at::Tensor origin;
 
 // Number of irreducible representations
 extern size_t NIrred;

@@ -25,13 +25,11 @@ GeomLoader::GeomLoader() {
     r = at::empty(SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
 }
 GeomLoader::~GeomLoader() {}
-void GeomLoader::cart2int() {
-    q = CL::TS::IC::compute_IC(r);
-}
 
 geom::geom() {}
 geom::geom(const GeomLoader & loader) {
-    SAIgeom = SSAIC::compute_SSAIC(loader.q);
+    at::Tensor q = CL::TS::IC::compute_IC(loader.r);
+    SAIgeom = SSAIC::compute_SSAIC(q);
 }
 geom::~geom() {}
 
@@ -137,28 +135,23 @@ DataSet<geom> * read_GeomSet(const std::vector<std::string> & data_set) {
     size_t count = 0;
     for (size_t its = 0; its < data_set.size(); its++) {
         // raw data loader
-        GeomLoader * RawGeomLoader = new GeomLoader[NDataPerSet[its]];
+        std::vector<GeomLoader> RawGeomLoader(NDataPerSet[its]);
         // r
         std::ifstream ifs; ifs.open(data_set[its]+"geom.data");
-            for (size_t i = 0; i < NDataPerSet[its]; i++)
-            for (size_t j = 0; j < SSAIC::cartdim / 3; j++) {
+            for (auto & loader : RawGeomLoader)
+            for (size_t i = 0; i < SSAIC::cartdim / 3; i++) {
                 std::string line; ifs >> line;
                 double dbletemp;
-                ifs >> dbletemp; RawGeomLoader[i].r[3*j  ] = dbletemp;
-                ifs >> dbletemp; RawGeomLoader[i].r[3*j+1] = dbletemp;
-                ifs >> dbletemp; RawGeomLoader[i].r[3*j+2] = dbletemp;
+                ifs >> dbletemp; loader.r[3*i  ] = dbletemp;
+                ifs >> dbletemp; loader.r[3*i+1] = dbletemp;
+                ifs >> dbletemp; loader.r[3*i+2] = dbletemp;
             }
         ifs.close();
-        // Process raw data
-        for (size_t i = 0; i < NDataPerSet[its]; i++) {
-            // Modify raw data
-            RawGeomLoader[i].cart2int();
-            // Insert to data set loader
-            vec_p_geom[count] = new geom(RawGeomLoader[i]);
+        // Insert to data set loader
+        for (auto & loader : RawGeomLoader) {
+            vec_p_geom[count] = new geom(loader);
             count++;
         }
-        // Clean up
-        delete [] RawGeomLoader;
     }
     // Create DataSet with data set loader
     GeomSet = new DataSet<geom>(vec_p_geom);
@@ -198,8 +191,8 @@ const double & zero_point, const double & weight) {
             }
         ifs_valid_states.close();
         // raw data loader
-        DataLoader * RawDataLoader = new DataLoader[NDataPerSet[its]];
-        for (size_t i = 0; i < NDataPerSet[its]; i++) RawDataLoader[i].init(NStates);
+        std::vector<DataLoader> RawDataLoader(NDataPerSet[its]);
+        for (auto & loader : RawDataLoader) loader.init(NStates);
         // r
         ifs.open(data_set[its]+"geom.data");
             for (size_t i = 0; i < NDataPerSet[its]; i++)
@@ -239,22 +232,20 @@ const double & zero_point, const double & weight) {
             ifs.close();
         } }
         // Process raw data
-        for (size_t i = 0; i < NDataPerSet[its]; i++) {
+        for (auto & loader : RawDataLoader) {
             // Modify raw data: cart2int and SubtractRef
-            RawDataLoader[i].cart2int();
-            RawDataLoader[i].SubtractRef(zero_point);
+            loader.cart2int();
+            loader.SubtractRef(zero_point);
             // Insert to data set loader
-            if (CL::TS::chemistry::check_degeneracy(DegThresh, RawDataLoader[i].energy)) {
-                vec_p_DegData[NDegData] = new DegData(RawDataLoader[i]);
+            if (CL::TS::chemistry::check_degeneracy(DegThresh, loader.energy)) {
+                vec_p_DegData[NDegData] = new DegData(loader);
                 NDegData++;
             } else {
-                vec_p_RegData[NRegData] = new RegData(RawDataLoader[i]);
+                vec_p_RegData[NRegData] = new RegData(loader);
                 vec_p_RegData[NRegData]->adjust_weight(weight);
                 NRegData++;
             }
         }
-        // Clean up
-        delete [] RawDataLoader;
     }
     // Create DataSet with data set loader
     vec_p_RegData.resize(NRegData);

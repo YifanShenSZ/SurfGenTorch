@@ -109,31 +109,31 @@ namespace CL { namespace TS { namespace IC {
                 if (type == "stretching") {
                     atom.resize(2);
                     atom[0] = std::stoul(strs.front()) - 1; strs.pop_front();
-                    atom[1] = std::stoul(strs.front()) - 1;
+                    atom[1] = std::stoul(strs.front()) - 1; strs.pop_front();
                 }
                 else if (type == "bending") {
                     atom.resize(3);
                     atom[0] = std::stoul(strs.front()) - 1; strs.pop_front();
                     atom[1] = std::stoul(strs.front()) - 1; strs.pop_front();
-                    atom[2] = std::stoul(strs.front()) - 1;
+                    atom[2] = std::stoul(strs.front()) - 1; strs.pop_front();
                 }
                 else if (type == "torsion") {
                     atom.resize(4);
                     atom[0] = std::stoul(strs.front()) - 1; strs.pop_front();
                     atom[1] = std::stoul(strs.front()) - 1; strs.pop_front();
                     atom[2] = std::stoul(strs.front()) - 1; strs.pop_front();
-                    atom[3] = std::stoul(strs.front()) - 1;
+                    atom[3] = std::stoul(strs.front()) - 1; strs.pop_front();
                 }
                 else if (type == "OutOfPlane") {
                     atom.resize(4);
                     atom[0] = std::stoul(strs.front()) - 1; strs.pop_front();
                     atom[1] = std::stoul(strs.front()) - 1; strs.pop_front();
                     atom[2] = std::stoul(strs.front()) - 1; strs.pop_front();
-                    atom[3] = std::stoul(strs.front()) - 1;
+                    atom[3] = std::stoul(strs.front()) - 1; strs.pop_front();
                 }
                 double min = -M_PI;
                 if (! strs.empty()) min = std::stod(strs.front());
-                def[intdim-1].motion.push_back(InvolvedMotion(type, atom, coeff));
+                def[intdim-1].motion.push_back(InvolvedMotion(type, atom, coeff, min));
             }
             ifs.close();
         }

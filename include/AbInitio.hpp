@@ -15,12 +15,10 @@ In addition, geometries can be extracted alone to feed pretraining
 namespace AbInitio {
 
 class GeomLoader { public:
-    at::Tensor r, q;
+    at::Tensor r;
 
     GeomLoader();
     ~GeomLoader();
-
-    void cart2int();
 };
 
 class geom { public:
@@ -32,7 +30,7 @@ class geom { public:
 };
 
 class DataLoader : public GeomLoader { public:
-    at::Tensor J, energy, dH;
+    at::Tensor q, J, energy, dH;
 
     DataLoader();
     ~DataLoader();
@@ -70,7 +68,7 @@ template <class T> class DataSet : public torch::data::datasets::Dataset<DataSet
         std::vector<T*> example_;
     public:
         inline DataSet(const std::vector<T*> & example) {example_ = example;}
-        inline ~DataSet() {}
+        inline ~DataSet() {for (T* & data : example_) delete [] data;}
 
         inline std::vector<T*> example() const {return example_;}
 
