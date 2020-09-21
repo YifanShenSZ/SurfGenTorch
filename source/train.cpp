@@ -23,7 +23,7 @@ void set_unit(const std::vector<AbInitio::RegData *> & RegSet) {
     }
     unit = MaxGrad / MaxEnergy;
     unit_square = unit * unit;
-    std::cout << "The typical work length of this system = " << 1.0/unit << '\n';
+    std::cout << "The typical work length of this system = " << 1.0 / unit << '\n';
 }
 
 void define_Hd(const std::string & Hd_in, const size_t & max_depth, const size_t & freeze,
@@ -92,18 +92,20 @@ const std::vector<std::string> & chk, const size_t & chk_depth, std::vector<doub
 
 // Compute adiabatic energy (Ha) and gradient (dHa) from input layer and J^T
 inline std::tuple<at::Tensor, at::Tensor> compute_Ha_dHa(
-const std::vector<at::Tensor> & x, const std::vector<at::Tensor> & JT) {
+std::vector<at::Tensor> & x, const std::vector<at::Tensor> & JT) {
+    // Enable gradient over input layer to compute dH
+    for (auto & irred : x) irred.set_requires_grad(true);
     // Compute diabatic quantity
     at::Tensor  H = Hd::compute_Hd(x);
     at::Tensor dH = H.new_empty({Hd::NStates, Hd::NStates, JT[0].size(0)});
     for (int i = 0; i < Hd::NStates; i++)
     for (int j = i; j < Hd::NStates; j++) {
         auto & irred = Hd::symmetry[i][j];
-        auto & g = x[irred].grad();
-        if (g.defined()) {g.detach_(); g.zero_();}
-        H[i][j].backward({}, true);
-        dH[i][j] = JT[irred].mv(g);
+        torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {x[irred]}, {}, true, true);
+        dH[i][j] = JT[irred].mv(g[0]);
     }
+    // Disable gradient over input layer to save CPU during loss.backward
+    for (auto & irred : x) irred.set_requires_grad(false);
     // Transform to adiabatic representation
     at::Tensor energy, state;
     std::tie(energy, state) = H.symeig(true);
@@ -231,8 +233,10 @@ namespace FLopt {
 
     // Compute adiabatic energy (Ha) and gradient (dHa) from input layer, J^T, specific network
     inline std::tuple<at::Tensor, at::Tensor> compute_Ha_dHa(
-    const std::vector<at::Tensor> & x, const std::vector<at::Tensor> & JT,
+    std::vector<at::Tensor> & x, const std::vector<at::Tensor> & JT,
     const std::vector<std::vector<std::shared_ptr<Hd::Net>>> & nets) {
+        // Enable gradient over input layer to compute dH
+        for (auto & irred : x) irred.set_requires_grad(true);
         // Compute diabatic quantity
         at::Tensor H = x[0].new_empty({Hd::NStates, Hd::NStates});
         for (int i = 0; i < Hd::NStates; i++)
@@ -242,11 +246,11 @@ namespace FLopt {
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++) {
             auto & irred = Hd::symmetry[i][j];
-            auto & g = x[irred].grad();
-            if (g.defined()) {g.detach_(); g.zero_();}
-            H[i][j].backward({}, true);
-            dH[i][j] = JT[irred].mv(g);
+            torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {x[irred]}, {}, true, true);
+            dH[i][j] = JT[irred].mv(g[0]);
         }
+        // Disable gradient over input layer to save CPU during loss.backward
+        for (auto & irred : x) irred.set_requires_grad(false);
         // Transform to adiabatic representation
         at::Tensor energy, state;
         std::tie(energy, state) = H.symeig(true);
@@ -508,7 +512,7 @@ namespace FLopt {
                 slice(data->energy.size(0), H, dH);
                 CL::TS::chemistry::fix(dH, data->dH);
                 // energy Jacobian
-                at::Tensor r_E = data->weight * unit * (H - data->energy);
+                at::Tensor r_E = data->weight * unit * H;
                 for (size_t el = 0; el < r_E.numel(); el++) {
                     net_zero_grad(nets);
                     r_E[el].backward({}, true);
@@ -517,7 +521,7 @@ namespace FLopt {
                 }
                 // dH Jacobian
                 for (int i = 0; i < H.size(0); i++) {
-                    at::Tensor r_dH = data->weight * (dH[i][i] - data->dH[i][i]);
+                    at::Tensor r_dH = data->weight * dH[i][i];
                     for (size_t el = 0; el < r_dH.numel(); el++) {
                         net_zero_grad(nets);
                         r_dH[el].backward({}, true);
@@ -525,7 +529,7 @@ namespace FLopt {
                         column++;
                     }
                     for (int j = i+1; j < H.size(0); j++) {
-                        at::Tensor r_dH = data->weight * Sqrt2 * (dH[i][j] - data->dH[i][j]);
+                        at::Tensor r_dH = data->weight * Sqrt2 * dH[i][j];
                         for (size_t el = 0; el < r_dH.numel(); el++) {
                             net_zero_grad(nets);
                             r_dH[el].backward({}, true);
@@ -544,12 +548,12 @@ namespace FLopt {
                 CL::TS::chemistry::fix(H, dH, data->H, data->dH, unit_square);
                 // H and dH Jacobian
                 for (int i = 0; i < H.size(0); i++) {
-                    at::Tensor r_H = H[i][i] - data->H[i][i];
+                    at::Tensor r_H = H[i][i];
                     net_zero_grad(nets);
                     r_H.backward({}, true);
                     dp2JT(nets, JT, NEq, column);
                     column++;
-                    at::Tensor r_dH = dH[i][i] - data->dH[i][i];
+                    at::Tensor r_dH = dH[i][i];
                     for (size_t el = 0; el < r_dH.numel(); el++) {
                         net_zero_grad(nets);
                         r_dH[el].backward({}, true);
@@ -557,12 +561,12 @@ namespace FLopt {
                         column++;
                     }
                     for (int j = i+1; j < H.size(0); j++) {
-                        at::Tensor r_H = Sqrt2 * (H[i][j] - data->H[i][j]);
+                        at::Tensor r_H = Sqrt2 * H[i][j];
                         net_zero_grad(nets);
                         r_H.backward({}, true);
                         dp2JT(nets, JT, NEq, column);
                         column++;
-                        at::Tensor r_dH = Sqrt2 * (dH[i][j] - data->dH[i][j]);
+                        at::Tensor r_dH = Sqrt2 * dH[i][j];
                         for (size_t el = 0; el < r_dH.numel(); el++) {
                             net_zero_grad(nets);
                             r_dH[el].backward({}, true);

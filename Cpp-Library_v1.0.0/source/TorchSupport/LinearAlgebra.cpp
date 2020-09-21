@@ -72,72 +72,37 @@ namespace CL { namespace TS { namespace LA {
 
     // Unitary transformation for symmetric 3rd-order tensor A
     // result_ijm = U^T_ia * A_abm * U_bj
-    at::Tensor UT_A3_U(const at::Tensor & UT, const at::Tensor & A, const at::Tensor & U) {
-        int N = U.size(0);
-        // work_ibm = U^T_ia * A_abm
-        at::Tensor work = A.new_zeros(A.sizes());
-        for (int i = 0; i < N; i++)
-        for (int b = 0; b < N; b++) {
-            for (int a = 0; a < b; a++) work[i][b] += UT[i][a] * A[a][b];
-            for (int a = b; a < N; a++) work[i][b] += UT[i][a] * A[b][a];
-        }
-        // result_ijm = work_ibm * U_bj
-        at::Tensor result = A.new_zeros(A.sizes());
-        for (int i = 0; i < N; i++)
-        for (int j = 0; j < N; j++)
-        for (int b = 0; b < N; b++)
-        result[i][j] += work[i][b] * U[b][j];
-        return result;
-    }
     at::Tensor UT_A3_U(const at::Tensor & A, const at::Tensor & U) {
         int N = U.size(0);
-        at::Tensor UT = U.transpose(0,1);
-        // work_ibm = U^T_ia * A_abm
+        // work_ibm = U^T_ia * A_abm = U_ai * A_abm
         at::Tensor work = A.new_zeros(A.sizes());
         for (int i = 0; i < N; i++)
         for (int b = 0; b < N; b++) {
-            for (int a = 0; a < b; a++) work[i][b] += UT[i][a] * A[a][b];
-            for (int a = b; a < N; a++) work[i][b] += UT[i][a] * A[b][a];
+            for (int a = 0; a < b; a++) work[i][b] += U[a][i] * A[a][b];
+            for (int a = b; a < N; a++) work[i][b] += U[a][i] * A[b][a];
         }
         // result_ijm = work_ibm * U_bj
         at::Tensor result = at::zeros(A.sizes(), A.options());
         for (int i = 0; i < N; i++)
-        for (int j = 0; j < N; j++)
+        for (int j = i; j < N; j++)
         for (int b = 0; b < N; b++)
         result[i][j] += work[i][b] * U[b][j];
         return result;
     }
     // On exit A harvests the result
-    void UT_A3_U_InPlace(const at::Tensor & UT, at::Tensor & A, const at::Tensor & U) {
-        int N = U.size(0);
-        // work_ibm = U^T_ia * A_abm
-        at::Tensor work = A.new_zeros(A.sizes());
-        for (int i = 0; i < N; i++)
-        for (int b = 0; b < N; b++) {
-            for (int a = 0; a < b; a++) work[i][b] += UT[i][a] * A[a][b];
-            for (int a = b; a < N; a++) work[i][b] += UT[i][a] * A[b][a];
-        }
-        // result_ijm = work_ibm * U_bj
-        A.fill_(0.0);
-        for (int i = 0; i < N; i++)
-        for (int j = 0; j < N; j++)
-        for (int b = 0; b < N; b++)
-        A[i][j] += work[i][b] * U[b][j];
-    }
     void UT_A3_U_InPlace(at::Tensor & A, const at::Tensor & U) {
         int N = U.size(0);
-        at::Tensor UT = U.transpose(0,1);
-        // work_ibm = U^T_ia * A_abm
+        // work_ibm = U^T_ia * A_abm = U_ai * A_abm
         at::Tensor work = A.new_zeros(A.sizes());
         for (int i = 0; i < N; i++)
         for (int b = 0; b < N; b++) {
-            for (int a = 0; a < b; a++) work[i][b] += UT[i][a] * A[a][b];
-            for (int a = b; a < N; a++) work[i][b] += UT[i][a] * A[b][a];
+            for (int a = 0; a < b; a++) work[i][b] += U[a][i] * A[a][b];
+            for (int a = b; a < N; a++) work[i][b] += U[a][i] * A[b][a];
         }
         // result_ijm = work_ibm * U_bj
         A.fill_(0.0);
         for (int i = 0; i < N; i++)
-        for (int j = 0; j < N; j++)
+        for (int j = i; j < N; j++)
         for (int b = 0; b < N; b++)
         A[i][j] += work[i][b] * U[b][j];
     }

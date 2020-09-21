@@ -9,7 +9,7 @@ namespace basic {
     int intdim, DefID;
 
     int cartdim;
-    double * init_geom;
+    double * init_geom, * q;
 
     size_t state;
 
@@ -35,7 +35,9 @@ namespace basic {
         return parser;
     }
 
-    std::string initialize(int argc, const char** argv) {
+    // Parse command line arguments, set global variables
+    // Return job type, diabatic, optimizer
+    std::tuple<std::string, bool, std::string> initialize(int argc, const char** argv) {
         // Welcome
         std::cout << "Critic: critical geometry search program\n";
         std::cout << "Yifan Shen 2020\n\n";
@@ -43,7 +45,7 @@ namespace basic {
         CL::utility::ShowTime();
         std::cout << '\n';
         srand((unsigned)time(NULL));
-    
+
         // Retrieve command line arguments
         std::string job = args.retrieve<std::string>("job");
         std::cout << "Job type: " + job << '\n';
@@ -77,8 +79,10 @@ namespace basic {
             init_geom = new double[cartdim];
             std::memcpy(init_geom, molorigin.geom().data(), cartdim * sizeof(double));
         }
+        q = new double[intdim];
+        FL::GT::InternalCoordinate(init_geom, q, cartdim, intdim, DefID);
         initialize_libSGT(SSAIC_in, DimRed_in, Hd_in);
 
-        return job;
+        return std::make_tuple(job, diabatic, opt);
     }
 } // namespace basic

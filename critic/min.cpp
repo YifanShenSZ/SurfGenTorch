@@ -3,20 +3,11 @@
 #include <FortranLibrary.hpp>
 
 #include <libSGT.hpp>
-
-namespace basic {
-    extern int intdim, DefID;
-
-    extern int cartdim;
-    extern double * init_geom;
-
-    extern size_t state;
-} // namespace basic
+#include "basic.hpp"
+using namespace basic;
 
 namespace min {
-    using namespace basic;
-
-    // Adiabatic energy and gradient wrapper for Fortran-Library
+    // Adiabatic energy and gradient wrapper
     void e(double & e, const double * q, const int & dim) {
         at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
         FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
@@ -31,6 +22,7 @@ namespace min {
         double * qtemp = new double[intdim];
         FL::GT::Cartesian2Internal(r.data_ptr<double>(), dH[state][state].data_ptr<double>(),
             qtemp, g, cartdim, intdim, 1, DefID);
+        delete [] qtemp;
     }
     int e_g(double & e, double * g, const double * q, const int & dim) {
         at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
@@ -41,10 +33,11 @@ namespace min {
         double * qtemp = new double[intdim];
         FL::GT::Cartesian2Internal(r.data_ptr<double>(), dH[state][state].data_ptr<double>(),
             qtemp, g, cartdim, intdim, 1, DefID);
+        delete [] qtemp;
         return 0;
     }
 
-    // Diabatic "energy" and gradient wrapper for Fortran-Library
+    // Diabatic "energy" and gradient wrapper
     void ed(double & ed, const double * q, const int & dim) {
         at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
         FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
@@ -59,6 +52,7 @@ namespace min {
         double * qtemp = new double[intdim];
         FL::GT::Cartesian2Internal(r.data_ptr<double>(), dH[state][state].data_ptr<double>(),
             qtemp, gd, cartdim, intdim, 1, DefID);
+        delete [] qtemp;
     }
     int ed_gd(double & ed, double * gd, const double * q, const int & dim) {
         at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
@@ -69,6 +63,16 @@ namespace min {
         double * qtemp = new double[intdim];
         FL::GT::Cartesian2Internal(r.data_ptr<double>(), dH[state][state].data_ptr<double>(),
             qtemp, gd, cartdim, intdim, 1, DefID);
+        delete [] qtemp;
         return 0;
+    }
+
+    void search_min(bool diabatic, std::string opt) {
+        if (opt == "CG") {
+            FL::NO::ConjugateGradient(e, g, e_g, q, intdim);
+        }
+        else {
+            // FL::NO::BFGS()
+        }
     }
 } // namespace min

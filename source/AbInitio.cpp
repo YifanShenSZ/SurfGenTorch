@@ -58,10 +58,7 @@ RegData::RegData(DataLoader & loader) {
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
     std::vector<at::Tensor> InpLay = Hd::input::input_layer(Redgeom);
     input_layer.resize(InpLay.size());
-    for (size_t irred = 0; irred < InpLay.size(); irred++) {
-        input_layer[irred] = InpLay[irred].detach();
-        input_layer[irred].set_requires_grad(true);
-    }
+    for (size_t irred = 0; irred < InpLay.size(); irred++) input_layer[irred] = InpLay[irred].detach();
     JT.resize(InpLay.size());
     for (size_t irred = 0; irred < InpLay.size(); irred++) {
         at::Tensor J_InpLay_q = at::empty(
@@ -71,7 +68,7 @@ RegData::RegData(DataLoader & loader) {
             at::Tensor & g = q.grad();
             if (g.defined()) {g.detach_(); g.zero_();};
             InpLay[irred][i].backward({}, true);
-            J_InpLay_q[i].copy_(g);
+            J_InpLay_q[i] = g;
         }
         JT[irred] = (J_InpLay_q.mm(loader.J)).transpose(0, 1);
     }
@@ -97,10 +94,7 @@ DegData::DegData(DataLoader & loader) {
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
     std::vector<at::Tensor> InpLay = Hd::input::input_layer(Redgeom);
     input_layer.resize(InpLay.size());
-    for (size_t irred = 0; irred < InpLay.size(); irred++) {
-        input_layer[irred] = InpLay[irred].detach();
-        input_layer[irred].set_requires_grad(true);
-    }
+    for (size_t irred = 0; irred < InpLay.size(); irred++) input_layer[irred] = InpLay[irred].detach();
     JT.resize(InpLay.size());
     for (size_t irred = 0; irred < InpLay.size(); irred++) {
         at::Tensor J_InpLay_q = at::empty(
@@ -110,7 +104,7 @@ DegData::DegData(DataLoader & loader) {
             at::Tensor & g = q.grad();
             if (g.defined()) {g.detach_(); g.zero_();};
             InpLay[irred][i].backward({}, true);
-            J_InpLay_q[i].copy_(g);
+            J_InpLay_q[i] = g;
         }
         JT[irred] = (J_InpLay_q.mm(loader.J)).transpose(0, 1);
     }

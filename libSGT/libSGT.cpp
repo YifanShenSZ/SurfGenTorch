@@ -56,7 +56,7 @@ compute_input_layer_and_JT(const at::Tensor & r) {
             at::Tensor & g = q.grad();
             if (g.defined()) {g.detach_(); g.zero_();};
             InpLay[irred][i].backward({}, true);
-            J_InpLay_q[i].copy_(g);
+            J_InpLay_q[i] = g;
         }
         JT[irred] = (J_InpLay_q.mm(J)).transpose(0, 1);
     }
@@ -115,8 +115,48 @@ std::tuple<at::Tensor, at::Tensor> compute_energy_dH(const at::Tensor & r) {
     // Transform to adiabatic representation
     at::Tensor energy, state;
     std::tie(energy, state) = H.symeig(true);
-    dH = CL::TS::LA::UT_A3_U(dH, state);
+    CL::TS::LA::UT_A3_U_InPlace(dH, state);
     return std::make_tuple(energy, dH);
+}
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_grad_hess(at::Tensor & r, const size_t & state_of_interest) {
+    r.set_requires_grad(true);
+    // Input layer and J^T
+    std::vector<at::Tensor> input_layer, JT;
+    std::tie(input_layer, JT) = compute_input_layer_and_JT(r);
+    for (auto & irred : input_layer) irred.set_requires_grad(true);
+    // Compute diabatic quantity
+    at::Tensor  H = Hd::compute_Hd(input_layer);
+    at::Tensor dH = H.new_empty({Hd::NStates, Hd::NStates, SSAIC::cartdim});
+    for (int i = 0; i < Hd::NStates; i++)
+    for (int j = i; j < Hd::NStates; j++) {
+        auto & irred = Hd::symmetry[i][j];
+        auto & g = input_layer[irred].grad();
+        if (g.defined()) {g.detach_(); g.zero_();}
+        H[i][j].backward({}, true);
+        dH[i][j] = JT[irred].mv(g);
+    }
+    // Transform to adiabatic representation
+    at::Tensor energy, state;
+    std::tie(energy, state) = H.symeig(true);
+    CL::TS::LA::UT_A3_U_InPlace(dH, state);
+    at::Tensor grad = dH[state_of_interest][state_of_interest];
+    // Compute Hessian
+    at::Tensor hess = H.new_empty({SSAIC::cartdim, SSAIC::cartdim});
+    for (size_t i = 0; i < SSAIC::cartdim; i++) {
+        // This may not work for torsion due to the sanity check
+        // Maybe have to backward to q & J then manually convert to r
+        at::Tensor & g = r.grad();
+        if (g.defined()) {g.detach_(); g.zero_();}
+        grad[i].backward({}, true);
+        hess[i] = g;
+    }
+    for (size_t i = 0; i < SSAIC::cartdim; i++)
+    for (size_t j = i+1; j < SSAIC::cartdim; j++) {
+        hess[i][j] = (hess[i][j] + hess[j][i]) / 2.0;
+        hess[j][i] = hess[i][j];
+    }
+    return std::make_tuple(energy[state_of_interest], grad, hess);
 }
 
 // Interoperability

@@ -22,8 +22,8 @@ namespace CL { namespace TS { namespace chemistry {
         at::Tensor eigval, eigvec;
         std::tie(eigval, eigvec) = dHdH.symeig(true, true);
         dHdH = eigvec.transpose(0, 1);
-        H = dHdH.mm(H.diag().mm(eigvec));
-        dH = LA::UT_A3_U(dHdH, dH, eigvec);
+        H = eigvec.transpose(0, 1).mm(H.diag().mm(eigvec));
+        LA::UT_A3_U_InPlace(dH, eigvec);
     }    
 
     /*

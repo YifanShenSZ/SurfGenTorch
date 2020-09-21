@@ -40,10 +40,8 @@ namespace LA {
 
     // Unitary transformation for symmetric 3rd-order tensor A
     // result_ijm = U^T_ia * A_abm * U_bj
-    at::Tensor UT_A3_U(const at::Tensor & UT, const at::Tensor & A, const at::Tensor & U);
     at::Tensor UT_A3_U(const at::Tensor & A, const at::Tensor & U);
     // On exit A harvests the result
-    void UT_A3_U_InPlace(const at::Tensor & UT, at::Tensor & A, const at::Tensor & U);
     void UT_A3_U_InPlace(at::Tensor & A, const at::Tensor & U);
 } // namespace LA
 

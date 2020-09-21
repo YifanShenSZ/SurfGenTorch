@@ -230,8 +230,8 @@ namespace CL { namespace TS { namespace IC {
                     runit12 /= r12;
                     // Output
                     q[i] += coeff * r12;
-                    J[i].slice(3 * atom[0], 3 * atom[0] + 3) += coeff * -runit12;
-                    J[i].slice(3 * atom[1], 3 * atom[1] + 3) += coeff *  runit12;
+                    J[i].slice(0, 3 * atom[0], 3 * atom[0] + 3) += coeff * -runit12;
+                    J[i].slice(0, 3 * atom[1], 3 * atom[1] + 3) += coeff *  runit12;
                 }
                 else if (type == "bending") {
                     // Prepare
@@ -249,9 +249,9 @@ namespace CL { namespace TS { namespace IC {
                     at::Tensor J2 = (costheta * runit23 - runit21) / (sintheta * r23);
                     // Output
                     q[i] += coeff * at::acos(costheta);
-                    J[i].slice(3 * atom[0], 3 * atom[0] + 3) += coeff * J0;
-                    J[i].slice(3 * atom[2], 3 * atom[2] + 3) += coeff * J2;
-                    J[i].slice(3 * atom[1], 3 * atom[1] + 3) += coeff * (- J0 - J2);
+                    J[i].slice(0, 3 * atom[0], 3 * atom[0] + 3) += coeff * J0;
+                    J[i].slice(0, 3 * atom[2], 3 * atom[2] + 3) += coeff * J2;
+                    J[i].slice(0, 3 * atom[1], 3 * atom[1] + 3) += coeff * (- J0 - J2);
                 }
                 else if (type == "torsion") {
                     // Prepare
@@ -277,15 +277,15 @@ namespace CL { namespace TS { namespace IC {
                     if (theta.item<double>() > 1.0) theta.fill_(0.0);
                     else if (theta.item<double>() < -1.0) theta.fill_(M_PI);
                     else theta = at::acos(theta);
-                    if(CL::TS::LA::triple_product(n123, n234, r23) < 0.0) theta = -theta;
+                    if(CL::TS::LA::triple_product(n123, n234, runit23) < 0.0) theta = -theta;
                     if(theta.item<double>() < min) theta += 2.0 * M_PI;
                     else if(theta.item<double>() > min + 2.0 * M_PI) theta -= 2.0 * M_PI;
                     // Output
                     q[i] += coeff * theta;
-                    J[i].slice(3 * atom[0], 3 * atom[0] + 3) = coeff * (-n123 / (r12 * sin123));
-                    J[i].slice(3 * atom[1], 3 * atom[1] + 3) = coeff * ((r23 - r12 * cos123) / (r12 * r23 * sin123) * n123 - cos234 / (r23 * sin234) * n234);
-                    J[i].slice(3 * atom[2], 3 * atom[2] + 3) = coeff * ((r34 * cos234 - r23) / (r23 * r34 * sin234) * n234 + cos123 / (r23 * sin123) * n123);
-                    J[i].slice(3 * atom[3], 3 * atom[3] + 3) = coeff * ( n234 / (r34 * sin234));
+                    J[i].slice(0, 3 * atom[0], 3 * atom[0] + 3) = coeff * (-n123 / (r12 * sin123));
+                    J[i].slice(0, 3 * atom[1], 3 * atom[1] + 3) = coeff * ((r23 - r12 * cos123) / (r12 * r23 * sin123) * n123 - cos234 / (r23 * sin234) * n234);
+                    J[i].slice(0, 3 * atom[2], 3 * atom[2] + 3) = coeff * ((r34 * cos234 - r23) / (r23 * r34 * sin234) * n234 + cos123 / (r23 * sin123) * n123);
+                    J[i].slice(0, 3 * atom[3], 3 * atom[3] + 3) = coeff * ( n234 / (r34 * sin234));
                 }
                 else if (type == "OutOfPlane") {
                     // Prepare
@@ -312,10 +312,10 @@ namespace CL { namespace TS { namespace IC {
                     at::Tensor J3 = (runit21.cross(runit23) / costheta / sin324 - tantheta / sin324sq * (runit24 - cos324 * runit23)) / r24;
                     // Output
                     q[i] += coeff * at::asin(sintheta);
-                    J[i].slice(3 * atom[0], 3 * atom[0] + 3) += coeff * J0;
-                    J[i].slice(3 * atom[2], 3 * atom[2] + 3) += coeff * J2;
-                    J[i].slice(3 * atom[3], 3 * atom[3] + 3) += coeff * J3;
-                    J[i].slice(3 * atom[1], 3 * atom[1] + 3) += coeff * (- J0 - J2 - J3);
+                    J[i].slice(0, 3 * atom[0], 3 * atom[0] + 3) += coeff * J0;
+                    J[i].slice(0, 3 * atom[2], 3 * atom[2] + 3) += coeff * J2;
+                    J[i].slice(0, 3 * atom[3], 3 * atom[3] + 3) += coeff * J3;
+                    J[i].slice(0, 3 * atom[1], 3 * atom[1] + 3) += coeff * (- J0 - J2 - J3);
                 }
             }
         }
