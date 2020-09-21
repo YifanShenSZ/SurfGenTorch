@@ -56,22 +56,21 @@ RegData::RegData(DataLoader & loader) {
     q.set_requires_grad(true);
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
-    std::vector<at::Tensor> InpLay = Hd::input::input_layer(Redgeom);
-    input_layer.resize(InpLay.size());
-    for (size_t irred = 0; irred < InpLay.size(); irred++) input_layer[irred] = InpLay[irred].detach();
-    JT.resize(InpLay.size());
-    for (size_t irred = 0; irred < InpLay.size(); irred++) {
+    input_layer = Hd::input::input_layer(Redgeom);
+    JT.resize(input_layer.size());
+    for (size_t irred = 0; irred < input_layer.size(); irred++) {
         at::Tensor J_InpLay_q = at::empty(
-            {InpLay[irred].size(0), q.size(0)},
+            {input_layer[irred].size(0), q.size(0)},
             at::TensorOptions().dtype(torch::kFloat64));
-        for (size_t i = 0; i < InpLay[irred].size(0); i++) {
+        for (size_t i = 0; i < input_layer[irred].size(0); i++) {
             at::Tensor & g = q.grad();
             if (g.defined()) {g.detach_(); g.zero_();};
-            InpLay[irred][i].backward({}, true);
-            J_InpLay_q[i] = g;
+            input_layer[irred][i].backward({}, true);
+            J_InpLay_q[i].copy_(g);
         }
         JT[irred] = (J_InpLay_q.mm(loader.J)).transpose(0, 1);
     }
+    for (at::Tensor & irred : input_layer) irred.detach_();
     // energy and dH
     energy = loader.energy.clone();
     dH = loader.dH.clone();
@@ -92,22 +91,21 @@ DegData::DegData(DataLoader & loader) {
     q.set_requires_grad(true);
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
-    std::vector<at::Tensor> InpLay = Hd::input::input_layer(Redgeom);
-    input_layer.resize(InpLay.size());
-    for (size_t irred = 0; irred < InpLay.size(); irred++) input_layer[irred] = InpLay[irred].detach();
-    JT.resize(InpLay.size());
-    for (size_t irred = 0; irred < InpLay.size(); irred++) {
+    input_layer = Hd::input::input_layer(Redgeom);
+    JT.resize(input_layer.size());
+    for (size_t irred = 0; irred < input_layer.size(); irred++) {
         at::Tensor J_InpLay_q = at::empty(
-            {InpLay[irred].size(0), q.size(0)},
+            {input_layer[irred].size(0), q.size(0)},
             at::TensorOptions().dtype(torch::kFloat64));
-        for (size_t i = 0; i < InpLay[irred].size(0); i++) {
+        for (size_t i = 0; i < input_layer[irred].size(0); i++) {
             at::Tensor & g = q.grad();
             if (g.defined()) {g.detach_(); g.zero_();};
-            InpLay[irred][i].backward({}, true);
-            J_InpLay_q[i] = g;
+            input_layer[irred][i].backward({}, true);
+            J_InpLay_q[i].copy_(g);
         }
         JT[irred] = (J_InpLay_q.mm(loader.J)).transpose(0, 1);
     }
+    for (at::Tensor & irred : input_layer) irred.detach_();
     // H and dH
     H = loader.energy; dH = loader.dH;
     CL::TS::chemistry::composite_representation(H, dH);
