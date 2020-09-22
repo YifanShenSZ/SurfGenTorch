@@ -63,13 +63,12 @@ RegData::RegData(DataLoader & loader) {
             {input_layer[irred].size(0), q.size(0)},
             at::TensorOptions().dtype(torch::kFloat64));
         for (size_t i = 0; i < input_layer[irred].size(0); i++) {
-            at::Tensor & g = q.grad();
-            if (g.defined()) {g.detach_(); g.zero_();};
-            input_layer[irred][i].backward({}, true);
-            J_InpLay_q[i].copy_(g);
+            torch::autograd::variable_list g = torch::autograd::grad({input_layer[irred][i]}, {q}, {}, true);
+            J_InpLay_q[i].copy_(g[0]);
         }
         JT[irred] = (J_InpLay_q.mm(loader.J)).transpose(0, 1);
     }
+    // Stop autograd
     for (at::Tensor & irred : input_layer) irred.detach_();
     // energy and dH
     energy = loader.energy.clone();
@@ -98,13 +97,12 @@ DegData::DegData(DataLoader & loader) {
             {input_layer[irred].size(0), q.size(0)},
             at::TensorOptions().dtype(torch::kFloat64));
         for (size_t i = 0; i < input_layer[irred].size(0); i++) {
-            at::Tensor & g = q.grad();
-            if (g.defined()) {g.detach_(); g.zero_();};
-            input_layer[irred][i].backward({}, true);
-            J_InpLay_q[i].copy_(g);
+            torch::autograd::variable_list g = torch::autograd::grad({input_layer[irred][i]}, {q}, {}, true);
+            J_InpLay_q[i].copy_(g[0]);
         }
         JT[irred] = (J_InpLay_q.mm(loader.J)).transpose(0, 1);
     }
+    // Stop autograd
     for (at::Tensor & irred : input_layer) irred.detach_();
     // H and dH
     H = loader.energy; dH = loader.dH;

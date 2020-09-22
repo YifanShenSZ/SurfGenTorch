@@ -93,7 +93,7 @@ const std::vector<std::string> & chk, const size_t & chk_depth, std::vector<doub
 // Compute adiabatic energy (Ha) and gradient (dHa) from input layer and J^T
 inline std::tuple<at::Tensor, at::Tensor> compute_Ha_dHa(
 std::vector<at::Tensor> & x, const std::vector<at::Tensor> & JT) {
-    // Enable gradient over input layer to compute dH
+    // Enable gradient w.r.t. input layer to compute dH
     for (auto & irred : x) irred.set_requires_grad(true);
     // Compute diabatic quantity
     at::Tensor  H = Hd::compute_Hd(x);
@@ -104,7 +104,7 @@ std::vector<at::Tensor> & x, const std::vector<at::Tensor> & JT) {
         torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {x[irred]}, {}, true, true);
         dH[i][j] = JT[irred].mv(g[0]);
     }
-    // Disable gradient over input layer to save CPU during loss.backward
+    // Disable gradient w.r.t. input layer to save CPU during loss.backward
     for (auto & irred : x) irred.set_requires_grad(false);
     // Transform to adiabatic representation
     at::Tensor energy, state;
@@ -235,7 +235,7 @@ namespace FLopt {
     inline std::tuple<at::Tensor, at::Tensor> compute_Ha_dHa(
     std::vector<at::Tensor> & x, const std::vector<at::Tensor> & JT,
     const std::vector<std::vector<std::shared_ptr<Hd::Net>>> & nets) {
-        // Enable gradient over input layer to compute dH
+        // Enable gradient w.r.t. input layer to compute dH
         for (auto & irred : x) irred.set_requires_grad(true);
         // Compute diabatic quantity
         at::Tensor H = x[0].new_empty({Hd::NStates, Hd::NStates});
@@ -249,7 +249,7 @@ namespace FLopt {
             torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {x[irred]}, {}, true, true);
             dH[i][j] = JT[irred].mv(g[0]);
         }
-        // Disable gradient over input layer to save CPU during loss.backward
+        // Disable gradient w.r.t. input layer to save CPU during loss.backward
         for (auto & irred : x) irred.set_requires_grad(false);
         // Transform to adiabatic representation
         at::Tensor energy, state;
@@ -605,7 +605,7 @@ namespace FLopt {
 
         RegSet = RegSet_;
         DegSet = DegSet_;
-        std::cout << "For parallelism, the number of regular data in use = "
+        std::cout << "For parallelism, the number of  regular   data in use = "
                   << OMP_NUM_THREADS * (RegSet.size() / OMP_NUM_THREADS) << '\n';
         std::cout << "For parallelism, the number of degenerate data in use = "
                   << OMP_NUM_THREADS * (DegSet.size() / OMP_NUM_THREADS) << '\n';

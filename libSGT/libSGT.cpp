@@ -2,12 +2,7 @@
 An evaluation library for SurfGenTorch
 
 Input: Cartesian coordinate
-Output: Hd, dHd, energy, dHa
-
-The higher order gradients cannot be calculated,
-since SurfGenTorch adopts scaled and symmetry adapted internal coordinate
-whose Jacobian to Cartesian coordinate is calculated by Fortran-Library rather than pytorch,
-which means this Jacobian cannot enjoy pytorch automatic differentiation
+Output: Hd, dHd, energy, dHa, Hessian
 */
 
 #include <torch/torch.h>
@@ -39,27 +34,23 @@ compute_input_layer_and_JT(const at::Tensor & r) {
     // cart2int
     at::Tensor q, J;
     std::tie(q, J) = CL::TS::IC::compute_IC_J(r, SSAIC::DefID);
-    // input_layer
     q.set_requires_grad(true);
+    // input_layer and J^T
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
-    std::vector<at::Tensor> InpLay = Hd::input::input_layer(Redgeom);
-    std::vector<at::Tensor> input_layer(InpLay.size());
-    for (size_t irred = 0; irred < InpLay.size(); irred++) input_layer[irred] = InpLay[irred].detach();
-    // J^T
-    std::vector<at::Tensor> JT(InpLay.size());
-    for (size_t irred = 0; irred < InpLay.size(); irred++) {
+    std::vector<at::Tensor> input_layer = Hd::input::input_layer(Redgeom);
+    std::vector<at::Tensor> JT(input_layer.size());
+    for (size_t irred = 0; irred < input_layer.size(); irred++) {
         at::Tensor J_InpLay_q = at::empty(
-            {InpLay[irred].size(0), q.size(0)},
+            {input_layer[irred].size(0), q.size(0)},
             at::TensorOptions().dtype(torch::kFloat64));
-        for (size_t i = 0; i < InpLay[irred].size(0); i++) {
-            at::Tensor & g = q.grad();
-            if (g.defined()) {g.detach_(); g.zero_();};
-            InpLay[irred][i].backward({}, true);
-            J_InpLay_q[i] = g;
+        for (size_t i = 0; i < input_layer[irred].size(0); i++) {
+            torch::autograd::variable_list g = torch::autograd::grad({input_layer[irred][i]}, {q}, {}, true);
+            J_InpLay_q[i].copy_(g[0]);
         }
         JT[irred] = (J_InpLay_q.mm(J)).transpose(0, 1);
     }
+    for (at::Tensor & irred : input_layer) irred.detach_();
     return std::make_tuple(input_layer, JT);
 }
 
@@ -80,11 +71,11 @@ std::tuple<at::Tensor, at::Tensor> compute_Hd_dHd(const at::Tensor & r) {
     for (int i = 0; i < Hd::NStates; i++)
     for (int j = i; j < Hd::NStates; j++) {
         auto & irred = Hd::symmetry[i][j];
-        auto & g = input_layer[irred].grad();
-        if (g.defined()) {g.detach_(); g.zero_();}
-        H[i][j].backward({}, true);
-        dH[i][j] = JT[irred].mv(g);
+        torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {input_layer[irred]}, {}, true);
+        dH[i][j] = JT[irred].mv(g[0]);
     }
+    // Stop autograd
+    H.detach_();
     return std::make_tuple(H, dH);
 }
 
@@ -107,20 +98,21 @@ std::tuple<at::Tensor, at::Tensor> compute_energy_dH(const at::Tensor & r) {
     for (int i = 0; i < Hd::NStates; i++)
     for (int j = i; j < Hd::NStates; j++) {
         auto & irred = Hd::symmetry[i][j];
-        auto & g = input_layer[irred].grad();
-        if (g.defined()) {g.detach_(); g.zero_();}
-        H[i][j].backward({}, true);
-        dH[i][j] = JT[irred].mv(g);
+        torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {input_layer[irred]}, {}, true);
+        dH[i][j] = JT[irred].mv(g[0]);
     }
     // Transform to adiabatic representation
     at::Tensor energy, state;
     std::tie(energy, state) = H.symeig(true);
     CL::TS::LA::UT_A3_U_InPlace(dH, state);
+    // Stop autograd
+    energy.detach_();
+    dH.detach_();
     return std::make_tuple(energy, dH);
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_grad_hess(at::Tensor & r, const size_t & state_of_interest) {
-    r.set_requires_grad(true);
+std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_grad_hess(const at::Tensor & r, const size_t & state_of_interest) {
+    assert((r.requires_grad(), "The input Cartesian coordinate tensor must require gradient"));
     // Input layer and J^T
     std::vector<at::Tensor> input_layer, JT;
     std::tie(input_layer, JT) = compute_input_layer_and_JT(r);
@@ -131,10 +123,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_grad_hess(at::Tens
     for (int i = 0; i < Hd::NStates; i++)
     for (int j = i; j < Hd::NStates; j++) {
         auto & irred = Hd::symmetry[i][j];
-        auto & g = input_layer[irred].grad();
-        if (g.defined()) {g.detach_(); g.zero_();}
-        H[i][j].backward({}, true);
-        dH[i][j] = JT[irred].mv(g);
+        torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {input_layer[irred]}, {}, true, true);
+        dH[i][j] = JT[irred].mv(g[0]);
     }
     // Transform to adiabatic representation
     at::Tensor energy, state;
@@ -146,16 +136,17 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_grad_hess(at::Tens
     for (size_t i = 0; i < SSAIC::cartdim; i++) {
         // This may not work for torsion due to the sanity check
         // Maybe have to backward to q & J then manually convert to r
-        at::Tensor & g = r.grad();
-        if (g.defined()) {g.detach_(); g.zero_();}
-        grad[i].backward({}, true);
-        hess[i] = g;
+        torch::autograd::variable_list g = torch::autograd::grad({grad[i]}, {r}, {}, true);
+        hess[i].copy_(g[0]);
     }
     for (size_t i = 0; i < SSAIC::cartdim; i++)
     for (size_t j = i+1; j < SSAIC::cartdim; j++) {
         hess[i][j] = (hess[i][j] + hess[j][i]) / 2.0;
         hess[j][i] = hess[i][j];
     }
+    // Stop autograd
+    energy[state_of_interest].detach_();
+    grad.detach_();
     return std::make_tuple(energy[state_of_interest], grad, hess);
 }
 
