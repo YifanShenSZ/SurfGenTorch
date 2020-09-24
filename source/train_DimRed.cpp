@@ -1,3 +1,7 @@
+/*
+Train dimensionality reduction network
+*/
+
 #include <omp.h>
 #include <torch/torch.h>
 
@@ -8,7 +12,7 @@
 #include "DimRed.hpp"
 #include "AbInitio.hpp"
 
-namespace pretrain {
+namespace train_DimRed {
 
 double RMSD(const size_t & irred, const std::shared_ptr<DimRed::Net> & net, const std::vector<AbInitio::geom *> & GeomSet) {
     double e = 0.0;
@@ -30,7 +34,7 @@ namespace FLopt {
     // The dimensionality reduction network (each thread owns a copy)
     std::vector<std::shared_ptr<DimRed::Net>> nets;
 
-    // The irreducible to pretrain
+    // The irreducible to train dimensionality reduction
     size_t irred;
 
     // Data set
@@ -249,11 +253,11 @@ namespace FLopt {
     }
 } // namespace FLopt
 
-void pretrain(const size_t & irred, const size_t & max_depth, const size_t & freeze,
+void train(const size_t & irred, const int64_t & max_depth, const size_t & freeze,
 const std::vector<std::string> & data_set,
-const std::vector<std::string> & chk, const size_t & chk_depth,
+const std::vector<std::string> & chk, const int64_t & chk_depth,
 const std::string & opt, const size_t & epoch, const size_t & batch_size, const double & learning_rate) {
-    std::cout << "Start pretraining\n";
+    std::cout << "Start training dimensionality reduction for irreducible " << irred << '\n';
     // Initialize network
     auto net = std::make_shared<DimRed::Net>(SSAIC::NSAIC_per_irred[irred], irred == 0, max_depth);
     net->to(torch::kFloat64);
@@ -293,8 +297,8 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                 if (iepoch % follow == 0) {
                     std::cout << "epoch = " << iepoch
                               << ", RMSD = " << RMSD(irred, net, GeomSet->example()) << std::endl;
-                    torch::save(net, "pretrain_"+std::to_string(iepoch)+".net");
-                    torch::save(optimizer, "pretrain_"+std::to_string(iepoch)+".opt");
+                    torch::save(net, "DimRed_"+std::to_string(iepoch)+".net");
+                    torch::save(optimizer, "DimRed_"+std::to_string(iepoch)+".opt");
                 }
             }
         }
@@ -321,8 +325,8 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                 if (iepoch % follow == 0) {
                     std::cout << "epoch = " << iepoch
                               << ", RMSD = " << RMSD(irred, net, GeomSet->example()) << std::endl;
-                    torch::save(net, "pretrain_"+std::to_string(iepoch)+".net");
-                    torch::save(optimizer, "pretrain_"+std::to_string(iepoch)+".opt");
+                    torch::save(net, "DimRed_"+std::to_string(iepoch)+".net");
+                    torch::save(optimizer, "DimRed_"+std::to_string(iepoch)+".opt");
                 }
             }
         }
@@ -331,8 +335,8 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
         FLopt::initialize(net, irred, freeze, GeomSet->example());
         FLopt::optimize(opt, epoch);
         std::cout << "RMSD = " << RMSD(irred, net, GeomSet->example()) << '\n';
-        torch::save(net, "pretrain.net");
+        torch::save(net, "DimRed.net");
     }
 }
 
-} // namespace pretrain
+} // namespace train_DimRed

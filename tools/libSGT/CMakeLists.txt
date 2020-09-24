@@ -10,20 +10,20 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 find_package(Torch REQUIRED)
 
 # Cpp-Library
-include_directories(../Cpp-Library_v1.0.0)
+include_directories(../../Cpp-Library_v1.0.0)
 set(CLSOURCE
-    ../Cpp-Library_v1.0.0/source/utility.cpp
-    ../Cpp-Library_v1.0.0/source/LinearAlgebra.cpp
-    ../Cpp-Library_v1.0.0/source/TorchSupport/utility.cpp
-    ../Cpp-Library_v1.0.0/source/TorchSupport/LinearAlgebra.cpp
-    ../Cpp-Library_v1.0.0/source/TorchSupport/InternalCoordinate.cpp
-    ../Cpp-Library_v1.0.0/source/TorchSupport/chemistry.cpp)
+    ../../Cpp-Library_v1.0.0/source/utility.cpp
+    ../../Cpp-Library_v1.0.0/source/LinearAlgebra.cpp
+    ../../Cpp-Library_v1.0.0/source/TorchSupport/utility.cpp
+    ../../Cpp-Library_v1.0.0/source/TorchSupport/LinearAlgebra.cpp
+    ../../Cpp-Library_v1.0.0/source/TorchSupport/InternalCoordinate.cpp
+    ../../Cpp-Library_v1.0.0/source/TorchSupport/chemistry.cpp)
 
-include_directories(../include)
+include_directories(../../include)
 set(SOURCE
-    ../source/SSAIC.cpp
-    ../source/DimRed.cpp
-    ../source/Hd.cpp
+    ../../source/SSAIC.cpp
+    ../../source/DimRed.cpp
+    ../../source/Hd.cpp
     libSGT.cpp)
 add_library(SGT SHARED ${CLSOURCE} ${SOURCE})
 

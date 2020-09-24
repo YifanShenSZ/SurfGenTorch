@@ -1,7 +1,5 @@
 /*
-A feedforward neural network to compute diabatic Hamiltonian (Hd)
-
-The 0th irreducible is assumed to be totally symmetric
+A feedforward neural network to fit diabatic Hamiltonian (Hd)
 */
 
 #ifndef Hd_hpp
@@ -9,27 +7,16 @@ The 0th irreducible is assumed to be totally symmetric
 
 #include <torch/torch.h>
 
+#include "observable_net.hpp"
+
 namespace Hd {
 
-struct Net : torch::nn::Module {
-    std::vector<torch::nn::Linear *> fc;
-
+struct Net : ON::Net {
     Net();
-    // Totally symmetric irreducible additionally has const term (bias)
-    // max_depth == 0 means unlimited
-    Net(const size_t & init_dim, const bool & totally_symmetric, const size_t & max_depth = 0);
+    Net(const size_t & init_dim, const bool & totally_symmetric, const int64_t & max_depth = -1);
     ~Net();
-
-    at::Tensor forward(const at::Tensor & x);
-
-    // For training
-    void copy(const std::shared_ptr<Net> & net);
-    void warmstart(const std::string & chk, const size_t & chk_depth);
-    void freeze(const size_t & freeze);
 };
 
-// Number of irreducible representations
-extern size_t NIrred;
 // Number of electronic states
 extern int NStates;
 // Symmetry of Hd elements
@@ -37,14 +24,7 @@ extern size_t ** symmetry;
 // Each Hd element owns a network
 extern std::vector<std::vector<std::shared_ptr<Net>>> nets;
 
-// Symmetry adapted polynomials serve as the input layer
-namespace input {
-    // Return number of input neurons per irreducible
-    std::vector<size_t> prepare_PNR(const std::string & Hd_input_layer_in);
-
-    std::vector<at::Tensor> input_layer(const std::vector<at::Tensor> & x);
-} // namespace input
-
+// The 0th irreducible is assumed to be totally symmetric
 void define_Hd(const std::string & Hd_in);
 
 // Input:  input layer

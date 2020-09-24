@@ -6,7 +6,7 @@
                 "~/Software/Programming/libtorch-cpu-1.4.0/include/**",
                 "Cpp-Library_v1.0.0",
                 "include",
-                "libSGT"
+                "tools/libSGT"
             ],
             "cppStandard": "c++14"
         }

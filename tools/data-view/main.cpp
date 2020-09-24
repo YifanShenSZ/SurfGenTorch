@@ -29,6 +29,7 @@ argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
 
     // train only
     parser.add_argument("--DimRed_in", 1, true, "an input file to define dimensionality reduction network");
+    parser.add_argument("--Hd_in", 1, true, "an input file to define diabatic Hamiltonian (Hd)");
     parser.add_argument("-z","--zero_point", 1, true, "zero of potential energy, default = 0");
     parser.add_argument("-w","--weight", 1, true, "Ethresh in weight adjustment, default = 1");
 
@@ -73,6 +74,38 @@ std::vector<std::string> verify_data_set(const std::vector<std::string> & origin
     return data_set;
 }
 
+void define_Hd(const std::string & Hd_in) {
+    std::ifstream ifs; ifs.open(Hd_in);
+        std::string line;
+        std::vector<std::string> strs;
+        // Number of electronic states
+        std::getline(ifs, line);
+        std::getline(ifs, line);
+        Hd::NStates = std::stoul(line);
+        // Symmetry of Hd elements
+        std::getline(ifs, line);
+        CL::utility::CreateArray(Hd::symmetry, Hd::NStates, Hd::NStates);
+        for (int i = 0; i < Hd::NStates; i++) {
+            std::getline(ifs, line); CL::utility::split(line, strs);
+            for (int j = 0; j < Hd::NStates; j++)
+            Hd::symmetry[i][j] = std::stoul(strs[j]) - 1;
+        }
+        // Input layer specification file
+        std::string Hd_input_layer_in;
+        std::getline(ifs, line);
+        std::getline(ifs, Hd_input_layer_in);
+        CL::utility::trim(Hd_input_layer_in);
+    ifs.close();
+    // Number of irreducible representations
+    Hd::NIrred = 0;
+    for (int i = 0; i < Hd::NStates; i++)
+    for (int j = 0; j < Hd::NStates; j++)
+    Hd::NIrred = Hd::symmetry[i][j] > Hd::NIrred ? Hd::symmetry[i][j] : Hd::NIrred;
+    Hd::NIrred++;
+    // Polynomial numbering rule
+    std::vector<size_t> NInput_per_irred = Hd::input::prepare_PNR(Hd_input_layer_in);
+}
+
 int main(int argc, const char** argv) {
     // Welcome
     std::cout << "Data view: view ab initio data details used in SurfGenTorch\n";
@@ -112,6 +145,9 @@ int main(int argc, const char** argv) {
         assert(("DimRed.in is required for training", args.gotArgument("DimRed_in")));
         std::string DimRed_in = args.retrieve<std::string>("DimRed_in");
         DimRed::define_DimRed(DimRed_in);
+        assert(("Hd.in is required for training", args.gotArgument("Hd_in")));
+        std::string Hd_in = args.retrieve<std::string>("Hd_in");
+        define_Hd(Hd_in);
         double zero_point = 0.0;
         if (args.gotArgument("zero_point")) zero_point = args.retrieve<double>("zero_point");
         double weight = 1.0;
@@ -122,19 +158,21 @@ int main(int argc, const char** argv) {
         AbInitio::DataSet<AbInitio::DegData> * DegSet;
         std::tie(RegSet, DegSet) = AbInitio::read_DataSet(data_set, zero_point, weight);
         std::cout << "Number of regular data = " << RegSet->size_int() << '\n';
-        std::cout << "The energies are\n";
         size_t count = 0;
         for (auto & data : RegSet->example()) {
-            std::cout << "Data " << count << ":\n"
-                      << data->energy << '\n';
+            std::cout << "Data " << count << ":\n";
+            std::cout << "Reduced geometry:\n";
+            for (auto & irred : data->input_layer) std::cout << irred[irred.numel()-1] << '\n';
+            std::cout << "Energy:\n" << data->energy << '\n';
             count++;
         }
         std::cout << "Number of degenerate data = " << DegSet->size_int() << '\n';
-        std::cout << "The Hamiltonians in composite representation are\n";
         count = 0;
         for (auto & data : DegSet->example()) {
-            std::cout << "Data " << count << ":\n"
-                      << data->H << '\n';
+            std::cout << "Data " << count << ":\n";
+            std::cout << "Reduced geometry:\n";
+            for (auto & irred : data->input_layer) std::cout << irred[irred.numel()-1] << '\n';
+            std::cout << "Composite representation Hamiltonian:\n" << data->H << '\n';
             count++;
         }
     }

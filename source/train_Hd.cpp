@@ -1,4 +1,7 @@
-#include <regex>
+/*
+Train Hd network
+*/
+
 #include <omp.h>
 #include <torch/torch.h>
 
@@ -9,7 +12,7 @@
 #include "Hd.hpp"
 #include "AbInitio.hpp"
 
-namespace train {
+namespace train_Hd {
 
 // The "unit" of energy, accounting for the unit difference bewteen energy and gradient
 double unit, unit_square;
@@ -27,7 +30,7 @@ void set_unit(const std::vector<AbInitio::RegData *> & RegSet) {
 }
 
 void define_Hd(const std::string & Hd_in, const size_t & max_depth, const size_t & freeze,
-const std::vector<std::string> & chk, const size_t & chk_depth, std::vector<double> & guess_diag) {
+const std::vector<std::string> & chk, const size_t & chk_depth, const std::vector<double> & guess_diag) {
     std::ifstream ifs; ifs.open(Hd_in);
         std::string line;
         std::vector<std::string> strs;
@@ -43,26 +46,13 @@ const std::vector<std::string> & chk, const size_t & chk_depth, std::vector<doub
             for (int j = 0; j < Hd::NStates; j++)
             Hd::symmetry[i][j] = std::stoul(strs[j]) - 1;
         }
-        // Input layer specification file
-        std::string Hd_input_layer_in;
-        std::getline(ifs, line);
-        std::getline(ifs, Hd_input_layer_in);
-        CL::utility::trim(Hd_input_layer_in);
     ifs.close();
-    // Number of irreducible representations
-    Hd::NIrred = 0;
-    for (int i = 0; i < Hd::NStates; i++)
-    for (int j = 0; j < Hd::NStates; j++)
-    Hd::NIrred = Hd::symmetry[i][j] > Hd::NIrred ? Hd::symmetry[i][j] : Hd::NIrred;
-    Hd::NIrred++;
-    // Polynomial numbering rule
-    std::vector<size_t> NInput_per_irred = Hd::input::prepare_PNR(Hd_input_layer_in);
     // Initialize networks
     Hd::nets.resize(Hd::NStates);
     for (int i = 0; i < Hd::NStates; i++) {
         Hd::nets[i].resize(Hd::NStates);
         for (int j = i; j < Hd::NStates; j++) {
-            Hd::nets[i][j] = std::make_shared<Hd::Net>(NInput_per_irred[Hd::symmetry[i][j]], Hd::symmetry[i][j] == 0, max_depth);
+            Hd::nets[i][j] = std::make_shared<Hd::Net>(ON::PNR[Hd::symmetry[i][j]].size(), Hd::symmetry[i][j] == 0, max_depth);
             Hd::nets[i][j]->to(torch::kFloat64);
         }
     }
@@ -76,10 +66,13 @@ const std::vector<std::string> & chk, const size_t & chk_depth, std::vector<doub
         }
     }
     else {
-        if (guess_diag.empty()) guess_diag = std::vector<double>(Hd::NStates, 0.0);
-        assert(("Wrong number of initial guess of Hd diagonal", guess_diag.size() == Hd::NStates));
-        for (int i = 0; i < Hd::NStates; i++)
-        (*(Hd::nets[i][i]->fc[Hd::nets[i][i]->fc.size()-1]))->bias.data_ptr<double>()[0] = guess_diag[i];
+        if (! guess_diag.empty()) {
+            assert(("Wrong number of initial guesses for Hd diagonals", guess_diag.size() == Hd::NStates));
+            for (int i = 0; i < Hd::NStates; i++) {
+                torch::NoGradGuard no_grad;
+                Hd::nets[i][i]->tail->bias.fill_(guess_diag[i]);
+            }
+        }
     }
     for (int i = 0; i < Hd::NStates; i++)
     for (int j = i; j < Hd::NStates; j++) {
@@ -592,9 +585,7 @@ namespace FLopt {
             for (int i = 0; i < Hd::NStates; i++) {
                 nets[i].resize(Hd::NStates);
                 for (int j = i; j < Hd::NStates; j++) {
-                    nets[i][j] = std::make_shared<Hd::Net>(
-                        (*(Hd::nets[i][j]->fc[0]))->options.in_features(),
-                        Hd::symmetry[i][j] == 0, Hd::nets[i][j]->fc.size());
+                    nets[i][j] = std::make_shared<Hd::Net>(ON::PNR[Hd::symmetry[i][j]].size(), Hd::symmetry[i][j] == 0, Hd::nets[i][j]->fc.size());
                     nets[i][j]->to(torch::kFloat64);
                     nets[i][j]->copy(Hd::nets[i][j]);
                     nets[i][j]->freeze(freeze_);
@@ -658,11 +649,11 @@ namespace FLopt {
     }
 } // namespace FLopt
 
-void train(const std::string & Hd_in, const size_t & max_depth, const size_t & freeze,
+void train(const std::string & Hd_in, const int64_t & max_depth, const size_t & freeze,
 const std::vector<std::string> & data_set, const double & zero_point, const double & weight,
-const std::vector<std::string> & chk, const size_t & chk_depth, std::vector<double> & guess_diag,
+const std::vector<std::string> & chk, const int64_t & chk_depth, const std::vector<double> & guess_diag,
 const std::string & opt, const size_t & epoch, const size_t & batch_size, const double & learning_rate) {
-    std::cout << "Start training\n";
+    std::cout << "Start training diabatic Hamiltonian\n";
     // Initialize network
     define_Hd(Hd_in, max_depth, freeze, chk, chk_depth, guess_diag);
     // Read data set
@@ -784,4 +775,4 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
     }
 }
 
-} // namespace train
+} // namespace train_Hd

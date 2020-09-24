@@ -19,6 +19,7 @@ void initialize_libSGT(const std::string & SSAIC_in, const std::string & DimRed_
     Hd::define_Hd(Hd_in);
 }
 
+// Auxilliary routines
 std::vector<at::Tensor> compute_input_layer(const at::Tensor & r) {
     // cart2int
     at::Tensor q = CL::TS::IC::compute_IC(r, SSAIC::DefID);
@@ -54,6 +55,7 @@ compute_input_layer_and_JT(const at::Tensor & r) {
     return std::make_tuple(input_layer, JT);
 }
 
+// Diabatic representation
 at::Tensor compute_Hd(const at::Tensor & r) {
     std::vector<at::Tensor> input_layer = compute_input_layer(r);
     at::Tensor H = Hd::compute_Hd(input_layer);
@@ -79,6 +81,7 @@ std::tuple<at::Tensor, at::Tensor> compute_Hd_dHd(const at::Tensor & r) {
     return std::make_tuple(H, dH);
 }
 
+// Adiabatic representation
 at::Tensor compute_energy(const at::Tensor & r) {
     std::vector<at::Tensor> input_layer = compute_input_layer(r);
     at::Tensor H = Hd::compute_Hd(input_layer);
@@ -87,7 +90,7 @@ at::Tensor compute_energy(const at::Tensor & r) {
     return energy;
 }
 
-std::tuple<at::Tensor, at::Tensor> compute_energy_dH(const at::Tensor & r) {
+std::tuple<at::Tensor, at::Tensor> compute_energy_dHa(const at::Tensor & r) {
     // Input layer and J^T
     std::vector<at::Tensor> input_layer, JT;
     std::tie(input_layer, JT) = compute_input_layer_and_JT(r);
@@ -111,7 +114,7 @@ std::tuple<at::Tensor, at::Tensor> compute_energy_dH(const at::Tensor & r) {
     return std::make_tuple(energy, dH);
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_grad_hess(const at::Tensor & r, const size_t & state_of_interest) {
+std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_dHa_hess(const at::Tensor & r, const size_t & state_of_interest) {
     assert((r.requires_grad(), "The input Cartesian coordinate tensor must require gradient"));
     // Input layer and J^T
     std::vector<at::Tensor> input_layer, JT;
@@ -130,13 +133,12 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_grad_hess(const at
     at::Tensor energy, state;
     std::tie(energy, state) = H.symeig(true);
     CL::TS::LA::UT_A3_U_InPlace(dH, state);
-    at::Tensor grad = dH[state_of_interest][state_of_interest];
     // Compute Hessian
     at::Tensor hess = H.new_empty({SSAIC::cartdim, SSAIC::cartdim});
     for (size_t i = 0; i < SSAIC::cartdim; i++) {
         // This may not work for torsion due to the sanity check
         // Maybe have to backward to q & J then manually convert to r
-        torch::autograd::variable_list g = torch::autograd::grad({grad[i]}, {r}, {}, true);
+        torch::autograd::variable_list g = torch::autograd::grad({dH[state_of_interest][state_of_interest][i]}, {r}, {}, true);
         hess[i].copy_(g[0]);
     }
     for (size_t i = 0; i < SSAIC::cartdim; i++)
@@ -145,9 +147,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_grad_hess(const at
         hess[j][i] = hess[i][j];
     }
     // Stop autograd
-    energy[state_of_interest].detach_();
-    grad.detach_();
-    return std::make_tuple(energy[state_of_interest], grad, hess);
+    energy.detach_();
+    dH.detach_();
+    return std::make_tuple(energy, dH, hess);
 }
 
 // Interoperability
@@ -156,10 +158,34 @@ void compute_Hd(double * r_, double * H_) {
     at::Tensor H = compute_Hd(r);
     std::memcpy(H_, H.data_ptr<double>(), H.numel() * sizeof(double));
 }
-void compute_energy_dH(double * r_, double * energy_, double * dH_) {
+
+void compute_Hd_dHd(double * r_, double * H_, double * dH_) {
+    at::Tensor r = at::from_blob(r_, SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
+    at::Tensor H, dH;
+    std::tie(H, dH) = compute_Hd_dHd(r);
+    std::memcpy( H_,  H.data_ptr<double>(),  H.numel() * sizeof(double));
+    std::memcpy(dH_, dH.data_ptr<double>(), dH.numel() * sizeof(double));
+}
+
+void compute_energy(double * r_, double * energy_) {
+    at::Tensor r = at::from_blob(r_, SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
+    at::Tensor energy = compute_energy(r);
+    std::memcpy(energy_, energy.data_ptr<double>(), energy.numel() * sizeof(double));
+}
+
+void compute_energy_dHa(double * r_, double * energy_, double * dH_) {
     at::Tensor r = at::from_blob(r_, SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
     at::Tensor energy, dH;
-    std::tie(energy, dH) = compute_energy_dH(r);
+    std::tie(energy, dH) = compute_energy_dHa(r);
     std::memcpy(energy_, energy.data_ptr<double>(), energy.numel() * sizeof(double));
-    std::memcpy(dH_, dH.data_ptr<double>(), dH.numel() * sizeof(double));
+    std::memcpy(    dH_,     dH.data_ptr<double>(),     dH.numel() * sizeof(double));
+}
+
+void compute_energy_dHa_hess(double * r_, const int & state, double * energy_, double * dH_, double * hess_) {
+    at::Tensor r = at::from_blob(r_, SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
+    at::Tensor energy, dH, hess;
+    std::tie(energy, dH, hess) = compute_energy_dHa_hess(r, state);
+    std::memcpy(energy_, energy.data_ptr<double>(), energy.numel() * sizeof(double));
+    std::memcpy(    dH_,     dH.data_ptr<double>(),     dH.numel() * sizeof(double));
+    std::memcpy(  hess_,   hess.data_ptr<double>(),   hess.numel() * sizeof(double));
 }

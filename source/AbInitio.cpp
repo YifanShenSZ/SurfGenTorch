@@ -14,7 +14,7 @@ In addition, geometries can be extracted alone to feed pretraining
 
 #include "SSAIC.hpp"
 #include "DimRed.hpp"
-#include "Hd.hpp"
+#include "observable_net.hpp"
 #include "AbInitio.hpp"
 
 namespace AbInitio {
@@ -56,7 +56,7 @@ RegData::RegData(DataLoader & loader) {
     q.set_requires_grad(true);
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
-    input_layer = Hd::input::input_layer(Redgeom);
+    input_layer = ON::input_layer(Redgeom);
     JT.resize(input_layer.size());
     for (size_t irred = 0; irred < input_layer.size(); irred++) {
         at::Tensor J_InpLay_q = at::empty(
@@ -90,7 +90,7 @@ DegData::DegData(DataLoader & loader) {
     q.set_requires_grad(true);
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
-    input_layer = Hd::input::input_layer(Redgeom);
+    input_layer = ON::input_layer(Redgeom);
     JT.resize(input_layer.size());
     for (size_t irred = 0; irred < input_layer.size(); irred++) {
         at::Tensor J_InpLay_q = at::empty(

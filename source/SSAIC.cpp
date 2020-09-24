@@ -2,7 +2,7 @@
 Scaled and symmetry adapted internal coordinate (SSAIC)
 
 The procedure of this module:
-    1. Define internal coordinates
+    1. Define internal coordinates, whose calculation is taken care of by Cpp-Library
     2. Nondimensionalize the internal coordinates:
        for length, dic = (ic - origin) / origin
        for angle , dic =  ic - origin

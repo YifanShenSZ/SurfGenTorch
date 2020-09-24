@@ -1,12 +1,10 @@
 /*
 A feedforward neural network to reduce dimensionality
 
-The 0th irreducible is assumed to be totally symmetric
-
 To maintain symmetry:
-    1. the inputs of a network must belong to a same irreducible
-    2. the activation functions must be odd (except for the totally symmetric irreducible)
-    3. only the totally symmetric irreducible can have bias
+    1. Each irreducible owns an autoencoder, whose inputs are the SSAICs belonging to this irreducible
+    2. Only the totally symmetric irreducible has bias
+    3. The activation functions are odd, except for the totally symmetric irreducible
 */
 
 #include <torch/torch.h>
@@ -20,11 +18,12 @@ namespace DimRed {
 
 Net::Net() {}
 // Totally symmetric irreducible additionally has const term (bias)
-// max_depth == 0 means unlimited
-Net::Net(const size_t & init_dim, const bool & totally_symmetric, const size_t & max_depth) {
+// max_depth < 0 means unlimited
+Net::Net(const size_t & init_dim, const bool & totally_symmetric, const int64_t & max_depth) {
     // Determine depth
+    assert(("Initial dimension <= 1 has no need to be reduced", init_dim > 1));
     size_t depth = init_dim - 1;
-    if (max_depth > 0 && depth > max_depth) depth = max_depth;
+    if (max_depth >= 0 && depth > max_depth) depth = max_depth;
     // Fully connected layer to reduce dimensionality
     fc.resize(depth);
     for (size_t i = 0; i < depth; i++) {
@@ -79,6 +78,7 @@ at::Tensor Net::forward(const at::Tensor & x) {
 void Net::copy(const std::shared_ptr<Net> & net) {
     torch::NoGradGuard no_grad;
     for (size_t i = 0; i < (fc.size() < net->fc.size() ? fc.size() : net->fc.size()); i++) {
+        // Fully connected layer to reduce dimensionality
         std::memcpy((*fc[i])->weight.data_ptr<double>(),
                     (*(net->fc[i]))->weight.data_ptr<double>(),
                     (*fc[i])->weight.numel() * sizeof(double));
@@ -86,6 +86,7 @@ void Net::copy(const std::shared_ptr<Net> & net) {
         std::memcpy((*fc[i])->bias.data_ptr<double>(),
                     (*(net->fc[i]))->bias.data_ptr<double>(),
                     (*fc[i])->bias.numel() * sizeof(double));
+        // Fully connected layer to inverse the reduction
         std::memcpy((*fc_inv[i])->weight.data_ptr<double>(),
                     (*(net->fc_inv[i]))->weight.data_ptr<double>(),
                     (*fc_inv[i])->weight.numel() * sizeof(double));
@@ -114,6 +115,7 @@ void Net::freeze(const size_t & freeze) {
 // Each irreducible owns a network
 std::vector<std::shared_ptr<Net>> nets;
 
+// The 0th irreducible is assumed to be totally symmetric
 void define_DimRed(const std::string & DimRed_in) {
     size_t NIrred;
     std::ifstream ifs; ifs.open(DimRed_in);

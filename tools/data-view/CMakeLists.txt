@@ -13,12 +13,12 @@ find_package(Torch REQUIRED)
 include_directories(Cpp-Library_v1.0.0)
 add_subdirectory(Cpp-Library_v1.0.0)
 
-include_directories(../include)
+include_directories(../../include)
 add_executable(data-view.exe
-    ../source/SSAIC.cpp
-    ../source/DimRed.cpp
-    ../source/Hd.cpp
-    ../source/AbInitio.cpp
+    ../../source/SSAIC.cpp
+    ../../source/DimRed.cpp
+    ../../source/Hd.cpp
+    ../../source/AbInitio.cpp
     main.cpp
 )
 

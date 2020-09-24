@@ -21,10 +21,11 @@ include_directories(include)
 add_executable(SurfGenTorch.exe
     source/SSAIC.cpp
     source/DimRed.cpp
+    source/observable_net.cpp
     source/Hd.cpp
     source/AbInitio.cpp
-    source/pretrain.cpp
-    source/train.cpp
+    source/train_DimRed.cpp
+    source/train_Hd.cpp
     source/main.cpp
 )
 
