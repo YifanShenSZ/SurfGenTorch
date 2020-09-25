@@ -23,6 +23,7 @@ include_directories(../../include)
 set(SOURCE
     ../../source/SSAIC.cpp
     ../../source/DimRed.cpp
+    ../../source/observable_net.cpp
     ../../source/Hd.cpp
     libSGT.cpp)
 add_library(SGT SHARED ${CLSOURCE} ${SOURCE})

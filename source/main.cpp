@@ -35,7 +35,7 @@ argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
     parser.add_argument("-l","--learning_rate", 1, true, "learning rate for Adam & SGD (default = 0.001)");
 
     // for training dimensionality reduction
-    parser.add_argument("-i","--irreducible", 1, true, "the irreducible to train dimensionality reduction");    
+    parser.add_argument("-i","--irreducible", 1, true, "the irreducible to train dimensionality reduction");
 
     // for training further quantities based on an established dimensionality reduction
     parser.add_argument("--DimRed_in", 1, true, "an input file to define dimensionality reduction network");
@@ -45,7 +45,7 @@ argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
     parser.add_argument("--Hd_in", 1, true, "an input file to define diabatic Hamiltonian (Hd)");
     parser.add_argument("-z","--zero_point", 1, true, "zero of potential energy, default = 0");
     parser.add_argument("-w","--weight", 1, true, "Ethresh in weight adjustment, default = 1");
-    parser.add_argument("-g","--guess_diag", '+', true, "initial guess of Hd diagonal, default = 0");
+    parser.add_argument("-g","--guess_diag", '+', true, "initial guess of Hd diagonal, default = pytorch initialization");
 
     parser.parse_args(argc, argv);
     return parser;
@@ -150,7 +150,7 @@ int main(int argc, const char** argv) {
             optimizer, epoch, batch_size, learning_rate);
     }
     else {
-        // Retrieve command line arguments and initialize
+        // Initialize DimRed (dimensionality reduction) and ON (observable network)
         assert(("DimRed.in is required for training further quantities based on an established dimensionality reduction", args.gotArgument("DimRed_in")));
         std::string DimRed_in = args.retrieve<std::string>("DimRed_in");
         DimRed::define_DimRed(DimRed_in);

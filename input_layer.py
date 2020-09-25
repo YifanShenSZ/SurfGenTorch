@@ -1,6 +1,6 @@
 '''
-According to user input generate Hd_input_layer.in,
-specifying the diabatic Hamiltonian input layer in SurfGen
+According to user input generate input_layer.in,
+specifying the observable network input layer in SurfGenTorch
 
 User should write their input in section 'User input' in this script,
 for example (the cyclopentoxy case):
@@ -102,7 +102,7 @@ if __name__ == "__main__":
         terms.append(AllTerms(order, coord))
 
     # Output
-    with open("Hd_input_layer.in", 'w') as f:
+    with open("input_layer.in", 'w') as f:
         order_list = numpy.empty(len(terms), dtype=int)
         order_list[0] = polynomial_specification[0][0]
         for i in range(1, order_list.shape[0]): order_list[i] = order_list[i-1] - 1

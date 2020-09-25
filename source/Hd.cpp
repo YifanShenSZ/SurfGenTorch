@@ -41,23 +41,27 @@ void define_Hd(const std::string & Hd_in) {
         }
         // Network parameters
         std::vector<std::string> net_pars((NStates+1)*NStates/2);
+        std::vector<int64_t> net_depths(net_pars.size());
         std::getline(ifs, line);
-        for (auto & p : net_pars) {
-            std::getline(ifs, p);
-            CL::utility::trim(p);
+        for (size_t i = 0; i < net_pars.size(); i++) {
+            std::getline(ifs, line);
+            strs = CL::utility::split(line);
+            net_pars[i] = strs[0];
+            if (strs.size() > 1) net_depths[i] = std::stoi(strs[1]);
+            else net_depths[i] = -1;
         }
     ifs.close();
     // Initialize networks
     nets.resize(NStates);
-    size_t index = 0;
+    size_t count = 0;
     for (int i = 0; i < NStates; i++) {
         nets[i].resize(NStates);
         for (int j = i; j < NStates; j++) {
-            nets[i][j] = std::make_shared<Net>(ON::PNR[symmetry[i][j]].size(), symmetry[i][j] == 0);
+            nets[i][j] = std::make_shared<Net>(ON::PNR[symmetry[i][j]].size(), symmetry[i][j] == 0, net_depths[count]);
             nets[i][j]->to(torch::kFloat64);
-            torch::load(nets[i][j], net_pars[index]);
+            torch::load(nets[i][j], net_pars[count]);
             nets[i][j]->eval();
-            index++;
+            count++;
         }
     }
 }

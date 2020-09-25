@@ -74,7 +74,7 @@ void Net::copy(const std::shared_ptr<Net> & net) {
                     tail->bias.numel() * sizeof(double));
     }
 }
-void Net::warmstart(const std::string & chk, const size_t & chk_depth) {
+void Net::warmstart(const std::string & chk, const int64_t & chk_depth) {
     auto warm_net = std::make_shared<Net>((*fc[0])->options.in_features(), (*fc[0])->options.bias(), chk_depth);
     warm_net->to(torch::kFloat64);
     torch::load(warm_net, chk);

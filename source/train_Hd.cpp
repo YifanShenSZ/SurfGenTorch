@@ -29,8 +29,8 @@ void set_unit(const std::vector<AbInitio::RegData *> & RegSet) {
     std::cout << "The typical work length of this system = " << 1.0 / unit << '\n';
 }
 
-void define_Hd(const std::string & Hd_in, const size_t & max_depth, const size_t & freeze,
-const std::vector<std::string> & chk, const size_t & chk_depth, const std::vector<double> & guess_diag) {
+void define_Hd(const std::string & Hd_in, const int64_t & max_depth, const size_t & freeze,
+const std::vector<std::string> & chk, const int64_t & chk_depth, const std::vector<double> & guess_diag) {
     std::ifstream ifs; ifs.open(Hd_in);
         std::string line;
         std::vector<std::string> strs;

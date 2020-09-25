@@ -257,7 +257,7 @@ void train(const size_t & irred, const int64_t & max_depth, const size_t & freez
 const std::vector<std::string> & data_set,
 const std::vector<std::string> & chk, const int64_t & chk_depth,
 const std::string & opt, const size_t & epoch, const size_t & batch_size, const double & learning_rate) {
-    std::cout << "Start training dimensionality reduction for irreducible " << irred << '\n';
+    std::cout << "Start training dimensionality reduction for irreducible " << irred + 1 << '\n';
     // Initialize network
     auto net = std::make_shared<DimRed::Net>(SSAIC::NSAIC_per_irred[irred], irred == 0, max_depth);
     net->to(torch::kFloat64);

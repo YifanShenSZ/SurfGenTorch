@@ -30,7 +30,7 @@ struct Net : torch::nn::Module {
 
     // For training
     void copy(const std::shared_ptr<Net> & net);
-    void warmstart(const std::string & chk, const size_t & chk_depth);
+    void warmstart(const std::string & chk, const int64_t & chk_depth);
     void freeze(const size_t & freeze);
 };
 

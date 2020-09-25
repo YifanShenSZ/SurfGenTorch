@@ -96,7 +96,7 @@ void Net::copy(const std::shared_ptr<Net> & net) {
                     (*fc_inv[i])->bias.numel() * sizeof(double));
     }
 }
-void Net::warmstart(const std::string & chk, const size_t & chk_depth) {
+void Net::warmstart(const std::string & chk, const int64_t & chk_depth) {
     auto warm_net = std::make_shared<Net>((*fc[0])->options.in_features(), (*fc[0])->options.bias(), chk_depth);
     warm_net->to(torch::kFloat64);
     torch::load(warm_net, chk);
@@ -128,14 +128,14 @@ void define_DimRed(const std::string & DimRed_in) {
         NIrred = init_dims.size();
         // Network parameters
         std::vector<std::string> net_pars(NIrred);
-        std::vector<size_t> net_depths(NIrred);
+        std::vector<int64_t> net_depths(NIrred);
         std::getline(ifs, line);
         for (size_t i = 0; i < NIrred; i++) {
             std::getline(ifs, line);
             strs = CL::utility::split(line);
             net_pars[i] = strs[0];
-            if (strs.size() > 1) net_depths[i] = std::stoul(strs[1]);
-            else net_depths[i] = 0;
+            if (strs.size() > 1) net_depths[i] = std::stoi(strs[1]);
+            else net_depths[i] = -1;
         }
     ifs.close();
     // Initialize networks
