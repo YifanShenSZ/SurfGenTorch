@@ -137,7 +137,7 @@ namespace CL { namespace TS { namespace IC {
             }
             ifs.close();
         }
-        // Normalized linear combination coefficient
+        // Normalize linear combination coefficient
         for (size_t i = 0; i < intdim; i++) {
             double norm2 = 0.0;
             for (size_t j = 0; j < def[i].motion.size(); j++) {

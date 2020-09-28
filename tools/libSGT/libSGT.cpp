@@ -1,8 +1,8 @@
 /*
 An evaluation library for SurfGenTorch
 
-Input: Cartesian coordinate
-Output: Hd, dHd, energy, dHa, Hessian
+Input: Cartesian or internal coordinate
+Output: Hd, dHd, ddHd, energy, dHa, ddHa in corresponding coordinate
 */
 
 #include <torch/torch.h>
@@ -27,29 +27,8 @@ void initialize_libSGT(const std::string & SSAIC_in, const std::string & DimRed_
 at::Tensor compute_Hd(const at::Tensor & r) {
     at::Tensor q = CL::TS::IC::compute_IC(r, SSAIC::DefID);
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
-
-std::cout << "SAIgeom\n";
-std::cout <<  SAIgeom[0] << '\n'
-          <<  SAIgeom[1] << '\n'
-          <<  SAIgeom[2] << '\n'
-          <<  SAIgeom[3] << '\n';
-
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
-
-std::cout << "Redgeom\n";
-std::cout <<  Redgeom[0] << '\n'
-          <<  Redgeom[1] << '\n'
-          <<  Redgeom[2] << '\n'
-          <<  Redgeom[3] << '\n';
-
     std::vector<at::Tensor> input_layer = ON::input_layer(Redgeom);
-
-std::cout << "input layer\n";
-std::cout <<  input_layer[0] << '\n'
-          <<  input_layer[1] << '\n'
-          <<  input_layer[2] << '\n'
-          <<  input_layer[3] << '\n';
-
     at::Tensor H = Hd::compute_Hd(input_layer);
     return H;
 }
@@ -89,7 +68,7 @@ at::Tensor compute_Hd_int(const at::Tensor & q) {
 
 // Diabatic Hamiltonian and gradient in internal coordinate
 std::tuple<at::Tensor, at::Tensor> compute_Hd_dHd_int(const at::Tensor & q) {
-    assert(("q must require gradient in order to compute dHd / dq", q.requires_grad()));
+    assert(("q must require gradient in order to compute gradient", q.requires_grad()));
     // Input layer
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
@@ -107,10 +86,44 @@ std::tuple<at::Tensor, at::Tensor> compute_Hd_dHd_int(const at::Tensor & q) {
     return std::make_tuple(H, dH);
 }
 
+// Diabatic Hamiltonian and gradient and Hessian in internal coordinate
+std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_Hd_dHd_ddHd_int(const at::Tensor & q) {
+    assert(("q must require gradient in order to compute gradient and Hessian", q.requires_grad()));
+    // Input layer
+    std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
+    std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
+    std::vector<at::Tensor> input_layer = ON::input_layer(Redgeom);
+    // Diabatic Hamiltonian and gradient
+    at::Tensor  H = Hd::compute_Hd(input_layer);
+    at::Tensor dH = H.new_empty({Hd::NStates, Hd::NStates, SSAIC::intdim});
+    for (int i = 0; i < Hd::NStates; i++)
+    for (int j = i; j < Hd::NStates; j++) {
+        torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {q}, {}, true, true);
+        dH[i][j] = g[0];
+    }
+    // Compute Hessian
+    at::Tensor ddH = H.new_empty({Hd::NStates, Hd::NStates, SSAIC::intdim, SSAIC::intdim});
+    for (size_t i = 0; i < Hd::NStates; i++)
+    for (size_t j = i; j < Hd::NStates; j++) {
+        for (size_t k = 0; k < SSAIC::intdim; k++) {
+            torch::autograd::variable_list g = torch::autograd::grad({dH[i][j][k]}, {q}, {}, true);
+            ddH[i][j][k].copy_(g[0]);
+        }
+        for (size_t k = 0    ; k < SSAIC::intdim; k++)
+        for (size_t l = k + 1; l < SSAIC::intdim; l++) {
+            ddH[i][j][k][l] = (ddH[i][j][k][l] + ddH[i][j][l][k]) / 2.0;
+            ddH[i][j][l][k].copy_(ddH[i][j][k][l]);
+        }
+    }
+    // Stop autograd
+    H.detach_();
+    dH.detach_();
+    return std::make_tuple(H, dH, ddH);
+}
+
 // Adiabatic energy and gradient and Hessian in internal coordinate
-// Only calculate the Hessian for the state of interest
-std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_dHa_hess_int(const at::Tensor & q, const size_t & state_of_interest) {
-    assert(("q must require gradient in order to compute dHd / dq", q.requires_grad()));
+std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_dHa_ddHa_int(const at::Tensor & q) {
+    assert(("q must require gradient in order to compute gradient and Hessian", q.requires_grad()));
     // Input layer
     std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
     std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
@@ -128,20 +141,23 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_dHa_hess_int(const
     std::tie(energy, state) = H.symeig(true);
     dH = CL::TS::LA::UT_A3_U(dH, state);
     // Compute Hessian
-    at::Tensor hess = H.new_empty({SSAIC::intdim, SSAIC::intdim});
-    for (size_t i = 0; i < SSAIC::intdim; i++) {
-        torch::autograd::variable_list g = torch::autograd::grad({dH[state_of_interest][state_of_interest][i]}, {q}, {}, true);
-        hess[i].copy_(g[0]);
-    }
-    for (size_t i = 0; i < SSAIC::cartdim; i++)
-    for (size_t j = i+1; j < SSAIC::cartdim; j++) {
-        hess[i][j] = (hess[i][j] + hess[j][i]) / 2.0;
-        hess[j][i].copy_(hess[i][j]);
+    at::Tensor ddH = H.new_empty({Hd::NStates, Hd::NStates, SSAIC::intdim, SSAIC::intdim});
+    for (size_t i = 0; i < Hd::NStates; i++)
+    for (size_t j = i; j < Hd::NStates; j++) {
+        for (size_t k = 0; k < SSAIC::intdim; k++) {
+            torch::autograd::variable_list g = torch::autograd::grad({dH[i][j][k]}, {q}, {}, true);
+            ddH[i][j][k].copy_(g[0]);
+        }
+        for (size_t k = 0    ; k < SSAIC::intdim; k++)
+        for (size_t l = k + 1; l < SSAIC::intdim; l++) {
+            ddH[i][j][k][l] = (ddH[i][j][k][l] + ddH[i][j][l][k]) / 2.0;
+            ddH[i][j][l][k].copy_(ddH[i][j][k][l]);
+        }
     }
     // Stop autograd
     energy.detach_();
     dH.detach_();
-    return std::make_tuple(energy, dH, hess);
+    return std::make_tuple(energy, dH, ddH);
 }
 
 // Interoperability
@@ -152,41 +168,53 @@ void initialize_libSGT() {
     Hd::define_Hd("Hd.in");
 }
 
-void compute_Hd(double * r_, double * H_) {
-    at::Tensor r = at::from_blob(r_, SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
+void compute_Hd(const double * r_, double * H_) {
+    at::Tensor r = at::from_blob(const_cast<double *>(r_), SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
     at::Tensor H = compute_Hd(r);
     std::memcpy(H_, H.data_ptr<double>(), H.numel() * sizeof(double));
 }
 
-void compute_Hd_dHd(double * r_, double * H_, double * dH_) {
-    at::Tensor r = at::from_blob(r_, SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
+void compute_Hd_dHd(const double * r_, double * H_, double * dH_) {
+    at::Tensor r = at::from_blob(const_cast<double *>(r_), SSAIC::cartdim, at::TensorOptions().dtype(torch::kFloat64));
     at::Tensor H, dH;
     std::tie(H, dH) = compute_Hd_dHd(r);
     std::memcpy( H_,  H.data_ptr<double>(),  H.numel() * sizeof(double));
     std::memcpy(dH_, dH.data_ptr<double>(), dH.numel() * sizeof(double));
 }
 
-void compute_Hd_int(double * q_, double * H_) {
-    at::Tensor q = at::from_blob(q_, SSAIC::intdim, at::TensorOptions().dtype(torch::kFloat64));
+void compute_Hd_int(const double * q_, double * H_) {
+    at::Tensor q = at::from_blob(const_cast<double *>(q_), SSAIC::intdim, at::TensorOptions().dtype(torch::kFloat64));
     at::Tensor H = compute_Hd_int(q);
     std::memcpy(H_, H.data_ptr<double>(), H.numel() * sizeof(double));
 }
 
-void compute_Hd_dHd_int(double * q_, double * H_, double * dH_) {
-    at::Tensor q = at::from_blob(q_, SSAIC::intdim, at::TensorOptions().dtype(torch::kFloat64).requires_grad(true));
+void compute_Hd_dHd_int(const double * q_, double * H_, double * dH_) {
+    at::Tensor q = at::from_blob(const_cast<double *>(q_), SSAIC::intdim, at::TensorOptions().dtype(torch::kFloat64));
+    q.set_requires_grad(true);
     at::Tensor H, dH;
-    std::tie(H, dH) = compute_Hd_dHd(q);
+    std::tie(H, dH) = compute_Hd_dHd_int(q);
     std::memcpy( H_,  H.data_ptr<double>(),  H.numel() * sizeof(double));
     std::memcpy(dH_, dH.data_ptr<double>(), dH.numel() * sizeof(double));
 }
 
-void compute_energy_dHa_hess_int(double * q_, double * energy_, double * dH_, double * hess_, const int & state_of_interest) {
-    at::Tensor q = at::from_blob(q_, SSAIC::intdim, at::TensorOptions().dtype(torch::kFloat64).requires_grad(true));
-    at::Tensor energy, dH, hess;
-    std::tie(energy, dH, hess) = compute_energy_dHa_hess_int(q, state_of_interest);
+void compute_Hd_dHd_ddHd_int(const double * q_, double * H_, double * dH_, double * ddH_) {
+    at::Tensor q = at::from_blob(const_cast<double *>(q_), SSAIC::intdim, at::TensorOptions().dtype(torch::kFloat64));
+    q.set_requires_grad(true);
+    at::Tensor H, dH, ddH;
+    std::tie(H, dH, ddH) = compute_Hd_dHd_ddHd_int(q);
+    std::memcpy(  H_,   H.data_ptr<double>(),   H.numel() * sizeof(double));
+    std::memcpy( dH_,  dH.data_ptr<double>(),  dH.numel() * sizeof(double));
+    std::memcpy(ddH_, ddH.data_ptr<double>(), ddH.numel() * sizeof(double));
+}
+
+void compute_energy_dHa_ddHa_int(const double * q_, double * energy_, double * dH_, double * ddH_) {
+    at::Tensor q = at::from_blob(const_cast<double *>(q_), SSAIC::intdim, at::TensorOptions().dtype(torch::kFloat64));
+    q.set_requires_grad(true);
+    at::Tensor energy, dH, ddH;
+    std::tie(energy, dH, ddH) = compute_energy_dHa_ddHa_int(q);
     std::memcpy(energy_, energy.data_ptr<double>(), energy.numel() * sizeof(double));
     std::memcpy(    dH_,     dH.data_ptr<double>(),     dH.numel() * sizeof(double));
-    std::memcpy(  hess_,   hess.data_ptr<double>(),   hess.numel() * sizeof(double));
+    std::memcpy(   ddH_,    ddH.data_ptr<double>(),    ddH.numel() * sizeof(double));
 }
 
 } // namespace libSGT

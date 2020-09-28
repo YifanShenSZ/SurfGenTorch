@@ -1,6 +1,11 @@
 #ifndef chemistry_hpp
 #define chemistry_hpp
 
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+
 #include "utility.hpp"
 
 namespace CL { namespace chemistry {
@@ -25,15 +30,32 @@ template <class T> class xyz {
                     ifs >> geom_[3*i+2];
                 }
             ifs.close();
-            if (AtomicUnit) {
-                for(size_t i = 0; i < geom_.size(); i++) geom_[i] *= 1.8897261339212517;
-            }
+            if (AtomicUnit) for(T & el : geom_) el *= 1.8897261339212517;
+        }
+        // Construct from memory
+        xyz(const std::vector<std::string> & symbol, const std::vector<T> & geom) {
+            NAtoms_ = symbol.size();
+            symbol_ = symbol;
+            geom_   = geom;
         }
         inline ~xyz() {}
 
         inline size_t NAtoms() const {return NAtoms_;}
         inline std::vector<std::string> symbol() const {return symbol_;}
         inline std::vector<T> geom() const {return geom_;}
+
+        void print(const std::string & xyzfile, const std::string & title="") {
+            std::ofstream ofs; ofs.open(xyzfile);
+                ofs << NAtoms_ << '\n';
+                ofs << title << '\n';
+                for(size_t i = 0; i < NAtoms_; i++) {
+                    ofs << symbol_[i]   << "    ";
+                    ofs << geom_[3*i]   << "    ";
+                    ofs << geom_[3*i+1] << "    ";
+                    ofs << geom_[3*i+2] << '\n';
+                }
+            ofs.close();
+        }
 };
 
 template <class T> class xyz_mass : public xyz<T> {
@@ -78,6 +100,9 @@ template <class T> class xyz_mass : public xyz<T> {
                 for(size_t i = 0; i < xyz<T>::geom_.size(); i++) xyz<T>::geom_[i] /= 1.8897261339212517;
             }
         }
+        // Construct from memory
+        xyz_mass(const std::vector<std::string> & symbol, const std::vector<T> & geom, const std::vector<T> & mass)
+        : xyz<T>(symbol, geom), mass_(mass) {}
         inline ~xyz_mass() {}
 
         inline std::vector<T> mass() const {return mass_;}

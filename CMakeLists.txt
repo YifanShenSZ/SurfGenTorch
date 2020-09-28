@@ -31,9 +31,9 @@ add_executable(SurfGenTorch.exe
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -m64 -xCORE-AVX2 -mtune=core-avx2 -O3 -no-prec-div -fp-model fast=2 -static-intel -parallel -ipo -mkl")
-    target_link_libraries(SurfGenTorch.exe "${TORCH_LIBRARIES}" CL FL)
+    target_link_libraries(SurfGenTorch.exe CL "${TORCH_LIBRARIES}" FL)
 else ()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -m64 -march=core-avx2 -mtune=core-avx2 -O3")
     link_directories(${MKLROOT}/lib/intel64)
-    target_link_libraries(SurfGenTorch.exe "${TORCH_LIBRARIES}" CL FL mkl_intel_lp64 mkl_gnu_thread mkl_core)
+    target_link_libraries(SurfGenTorch.exe CL "${TORCH_LIBRARIES}" FL mkl_intel_lp64 mkl_gnu_thread mkl_core)
 endif ()

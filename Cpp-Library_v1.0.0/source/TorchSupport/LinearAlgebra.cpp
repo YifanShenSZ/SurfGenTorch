@@ -90,7 +90,7 @@ namespace CL { namespace TS { namespace LA {
         return result;
     }
     // On exit A harvests the result
-    void UT_A3_U_InPlace(at::Tensor & A, const at::Tensor & U) {
+    void UT_A3_U_(at::Tensor & A, const at::Tensor & U) {
         int N = U.size(0);
         // work_ibm = U^T_ia * A_abm = U_ai * A_abm
         at::Tensor work = A.new_zeros(A.sizes());

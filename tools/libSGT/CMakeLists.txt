@@ -10,29 +10,31 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 find_package(Torch REQUIRED)
 
 # Cpp-Library
-include_directories(../../Cpp-Library_v1.0.0)
+set (CLROOT ~/Software/Mine/SurfGenTorch/Cpp-Library_v1.0.0)
+include_directories(${CLROOT})
 set(CLSOURCE
-    ../../Cpp-Library_v1.0.0/source/utility.cpp
-    ../../Cpp-Library_v1.0.0/source/LinearAlgebra.cpp
-    ../../Cpp-Library_v1.0.0/source/TorchSupport/utility.cpp
-    ../../Cpp-Library_v1.0.0/source/TorchSupport/LinearAlgebra.cpp
-    ../../Cpp-Library_v1.0.0/source/TorchSupport/InternalCoordinate.cpp
-    ../../Cpp-Library_v1.0.0/source/TorchSupport/chemistry.cpp)
+    ${CLROOT}/source/utility.cpp
+    ${CLROOT}/source/LinearAlgebra.cpp
+    ${CLROOT}/source/TorchSupport/utility.cpp
+    ${CLROOT}/source/TorchSupport/LinearAlgebra.cpp
+    ${CLROOT}/source/TorchSupport/InternalCoordinate.cpp
+    ${CLROOT}/source/TorchSupport/chemistry.cpp)
 
-include_directories(../../include)
+set (SGTROOT ~/Software/Mine/SurfGenTorch)
+include_directories(${SGTROOT}/include)
 set(SOURCE
-    ../../source/SSAIC.cpp
-    ../../source/DimRed.cpp
-    ../../source/observable_net.cpp
-    ../../source/Hd.cpp
+    ${SGTROOT}/source/SSAIC.cpp
+    ${SGTROOT}/source/DimRed.cpp
+    ${SGTROOT}/source/observable_net.cpp
+    ${SGTROOT}/source/Hd.cpp
     libSGT.cpp)
-add_library(SGT SHARED ${CLSOURCE} ${SOURCE})
+add_library(SGT STATIC ${CLSOURCE} ${SOURCE})
+add_library(SGT-dynamic SHARED ${CLSOURCE} ${SOURCE})
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -m64 -xCORE-AVX2 -mtune=core-avx2 -O3 -no-prec-div -fp-model fast=2 -static-intel -parallel -ipo -mkl")
-    target_link_libraries(SGT "${TORCH_LIBRARIES}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -m64 -xCORE-AVX2 -mtune=core-avx2 -O3 -no-prec-div -fp-model fast=2 -static-intel -parallel -ipo")
 else ()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -m64 -march=core-avx2 -mtune=core-avx2 -O3")
-    link_directories(${MKLROOT}/lib/intel64)
-    target_link_libraries(SGT "${TORCH_LIBRARIES}")
 endif ()
+target_link_libraries(SGT "${TORCH_LIBRARIES}")
+target_link_libraries(SGT-dynamic "${TORCH_LIBRARIES}")

@@ -1,25 +1,56 @@
 #include <torch/torch.h>
 
+#include <CppLibrary/TorchSupport.hpp>
 #include <FortranLibrary.hpp>
 
 #include <libSGT.hpp>
-#include "basic.hpp"
-using namespace basic;
 
 namespace sad {
-    // Adiabatic gradient wrapper
-    void g(double * g, const double * q, const int & M, const int & N) {
-        at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
-        FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
-        at::Tensor energy, dH;
-        std::tie(energy, dH) = compute_energy_dH(r);
-        double * qtemp = new double[intdim];
-        FL::GT::Cartesian2Internal(r.data_ptr<double>(), dH[state][state].data_ptr<double>(),
-            qtemp, g, cartdim, intdim, 1, DefID);
-        delete [] qtemp;
+    // Wrapper control
+    size_t state_of_interest;
+
+    // Adiabatic gradient and Hessian wrapper
+    void g(double * g, const double * q, const int & intdim, const int & intdim_) {
+        at::Tensor q_tensor = at::from_blob(const_cast<double *>(q), intdim, at::TensorOptions().dtype(torch::kFloat64));
+        q_tensor.set_requires_grad(true);
+        at::Tensor H, dH;
+        std::tie(H, dH) = libSGT::compute_Hd_dHd_int(q_tensor);
+        at::Tensor energy, state;
+        std::tie(energy, state) = H.symeig(true);
+        CL::TS::LA::UT_A3_U_(dH, state);
+        std::memcpy(g, dH[state_of_interest][state_of_interest].data_ptr<double>(), intdim * sizeof(double));
+    }
+    void h(double * h, const double * q, const int & intdim, const int & intdim_) {
+        at::Tensor q_tensor = at::from_blob(const_cast<double *>(q), intdim, at::TensorOptions().dtype(torch::kFloat64));
+        q_tensor.set_requires_grad(true);
+        at::Tensor energy, dH, ddH;
+        std::tie(energy, dH, ddH) = libSGT::compute_energy_dHa_ddHa_int(q_tensor);
+        std::memcpy(h, ddH[state_of_interest][state_of_interest].data_ptr<double>(), intdim * intdim * sizeof(double));
     }
 
-    void search_sad(bool diabatic, std::string opt) {
-        // FL::NO::TrustRegion(g, );
+    // Diabatic gradient and Hessian wrapper
+    void gd(double * g, const double * q, const int & intdim, const int & intdim_) {
+        at::Tensor q_tensor = at::from_blob(const_cast<double *>(q), intdim, at::TensorOptions().dtype(torch::kFloat64));
+        q_tensor.set_requires_grad(true);
+        at::Tensor H, dH;
+        std::tie(H, dH) = libSGT::compute_Hd_dHd_int(q_tensor);
+        std::memcpy(g, dH[state_of_interest][state_of_interest].data_ptr<double>(), intdim * sizeof(double));
+    }
+    void hd(double * h, const double * q, const int & intdim, const int & intdim_) {
+        at::Tensor q_tensor = at::from_blob(const_cast<double *>(q), intdim, at::TensorOptions().dtype(torch::kFloat64));
+        q_tensor.set_requires_grad(true);
+        at::Tensor H, dH, ddH;
+        std::tie(H, dH, ddH) = libSGT::compute_Hd_dHd_ddHd_int(q_tensor);
+        std::memcpy(h, ddH[state_of_interest][state_of_interest].data_ptr<double>(), intdim * intdim * sizeof(double));
+    }
+
+    void search_sad(double * q, const int & intdim, size_t state, bool diabatic) {
+        state_of_interest = state;
+        if (diabatic) {
+            FL::NO::TrustRegion(gd, hd, q, intdim, intdim);
+        }
+        else {
+            FL::NO::TrustRegion(g, h, q, intdim, intdim);
+        }
     }
 } // namespace sad

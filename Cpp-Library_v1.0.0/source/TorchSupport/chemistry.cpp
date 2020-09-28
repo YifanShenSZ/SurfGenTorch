@@ -23,7 +23,7 @@ namespace CL { namespace TS { namespace chemistry {
         std::tie(eigval, eigvec) = dHdH.symeig(true, true);
         dHdH = eigvec.transpose(0, 1);
         H = eigvec.transpose(0, 1).mm(H.diag().mm(eigvec));
-        LA::UT_A3_U_InPlace(dH, eigvec);
+        LA::UT_A3_U_(dH, eigvec);
     }    
 
     /*

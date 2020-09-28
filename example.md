@@ -1,5 +1,5 @@
 # C6H7N-aniline
-36 internal coordinates, divided into:
+The highest possible point group of aniline is C2v, whose isomorphic CNPI group is G4. There are 36 internal coordinates, divided into:
 | irred | dim |
 |-------|-----|
 |  A1   | 13  |
@@ -7,7 +7,7 @@
 |  B2   | 12  |
 |  A2   |  4  |
 
-## Dimensionality reduction network:
+## Dimensionality reduction
 The resolution of geometry should be at least 0.01. The goal is 0.001, since this is the finite difference step utilized in ab initio. So, the accuracy expectation is:
 | irred | RMSD tol | RMSD goal | RMSD ideal |
 |-------|----------|-----------|------------|
@@ -25,6 +25,8 @@ Based on accuray on minimal data set, the depth of each network is:
 |  B2   |    11     |    11     |    10      |      9      |
 |  A2   |     3     |     3     |     2      |      2      |
 
-Total number of weights <= 728 + 112 + 572 + 20 = 1432
+Total number of weights <= 806 + 112 + 572 + 20 = 1510
 
-During pretraining, the number of training parameters doubles
+During training, the number of training parameters doubles
+
+## Fitting diabatic Hamiltonian

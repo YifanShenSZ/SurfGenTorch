@@ -42,7 +42,7 @@ namespace LA {
     // result_ijm = U^T_ia * A_abm * U_bj
     at::Tensor UT_A3_U(const at::Tensor & A, const at::Tensor & U);
     // On exit A harvests the result
-    void UT_A3_U_InPlace(at::Tensor & A, const at::Tensor & U);
+    void UT_A3_U_(at::Tensor & A, const at::Tensor & U);
 } // namespace LA
 
 /*
@@ -66,7 +66,16 @@ Warning:
 */
 namespace IC {
     struct InvolvedMotion {
-        // Motion type
+        // Currently only support stretching, bending, torsion, OutOfPlane
+        // stretching: the motion coordinate is bond length atom1_atom2
+        // bending   : the motion coordinate is bond angle atom1_atom2_atom3, range [0,pi]
+        //             derivative encounters singularity at pi
+        // torsion   : the motion coordinate is dihedral angle atom1_atom2_atom3_atom4, range [min, min + 2pi]
+        //             specifically, angle between plane 123 and plane 234
+        //             dihedral angle has same sign to n_123 x n_234 . r_23
+        //             where n_abc (the normal vector of plane abc) is the unit vector along r_ab x r_bc
+        // OutOfPlane: the motion coordinate is out of plane angle atom1_atom2_atom3_atom4, range [-pi/2, pi/2]
+        //             specifically, bond 12 out of plane 234
         std::string type;
         // Involved atoms
         std::vector<size_t> atom;

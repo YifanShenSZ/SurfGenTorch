@@ -1,8 +1,8 @@
 /*
 An evaluation library for SurfGenTorch
 
-Input: Cartesian coordinate
-Output: Hd, dHd, energy, dHa, Hessian
+Input: Cartesian or internal coordinate
+Output: Hd, dHd, ddHd, energy, dHa, ddHa in corresponding coordinate
 */
 
 #ifndef libSGT_hpp
@@ -12,8 +12,7 @@ Output: Hd, dHd, energy, dHa, Hessian
 
 namespace libSGT {
 
-void initialize_libSGT(const std::string & SSAIC_in, const std::string & DimRed_in, const std::string & input_layer_in,
-const std::string & Hd_in);
+void initialize_libSGT(const std::string & SSAIC_in, const std::string & DimRed_in, const std::string & input_layer_in, const std::string & Hd_in);
 
 // Diabatic Hamiltonian from Cartesian coordinate
 at::Tensor compute_Hd(const at::Tensor & r);
@@ -28,8 +27,11 @@ at::Tensor compute_Hd_int(const at::Tensor & q);
 // Only calculate the Hessian for the state of interest
 std::tuple<at::Tensor, at::Tensor> compute_Hd_dHd_int(const at::Tensor & q);
 
-// Only calculate the Hessian for the state of interest
-std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_dHa_hess_int(const at::Tensor & q, const size_t & state_of_interest);
+// Diabatic Hamiltonian and gradient and Hessian in internal coordinate
+std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_Hd_dHd_ddHd_int(const at::Tensor & q);
+
+// Adiabatic energy and gradient and Hessian in internal coordinate
+std::tuple<at::Tensor, at::Tensor, at::Tensor> compute_energy_dHa_ddHa_int(const at::Tensor & q);
 
 } // namespace libSGT
 

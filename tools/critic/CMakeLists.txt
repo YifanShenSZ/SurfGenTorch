@@ -13,20 +13,22 @@ find_package(Torch REQUIRED)
 include_directories(Cpp-Library_v1.0.0)
 add_subdirectory(Cpp-Library_v1.0.0)
 
-include_directories(../include)
+# libSGT
+include_directories(libSGT)
+add_subdirectory(libSGT)
+
 add_executable(critic.exe
-    ../source/SSAIC.cpp
-    ../source/DimRed.cpp
-    ../source/Hd.cpp
-    ../source/AbInitio.cpp
+    min.cpp
+    sad.cpp
+    mex.cpp
     main.cpp
 )
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopenmp -m64 -xCORE-AVX2 -mtune=core-avx2 -O3 -no-prec-div -fp-model fast=2 -static-intel -parallel -ipo -mkl")
-    target_link_libraries(critic.exe "${TORCH_LIBRARIES}" CL)
+    target_link_libraries(critic.exe SGT CL "${TORCH_LIBRARIES}" FL)
 else ()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -m64 -march=core-avx2 -mtune=core-avx2 -O3")
     link_directories(${MKLROOT}/lib/intel64)
-    target_link_libraries(critic.exe "${TORCH_LIBRARIES}" CL)
+    target_link_libraries(critic.exe SGT CL "${TORCH_LIBRARIES}" FL mkl_intel_lp64 mkl_gnu_thread mkl_core)
 endif ()

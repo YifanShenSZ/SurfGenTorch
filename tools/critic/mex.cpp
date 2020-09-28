@@ -1,119 +1,82 @@
 #include <torch/torch.h>
 
+#include <CppLibrary/TorchSupport.hpp>
 #include <FortranLibrary.hpp>
 
 #include <libSGT.hpp>
-#include "basic.hpp"
-using namespace basic;
 
 namespace mex {
-    // Adiabatic energy, gradient, gap, gap gradient wrapper
-    void e(double & e, const double * q, const int & N) {
-        at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
-        FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
-        at::Tensor energy = compute_energy(r);
-        e = energy[state].item<double>();
+    // Wrapper control
+    size_t state_of_interest;
+
+    // Adiabatic energy, gradient, Hessian, gap, gap gradient, gap Hessian wrapper
+    void e(double & e, const double * q, const int & intdim) {
+        at::Tensor q_tensor = at::from_blob(const_cast<double *>(q), intdim, at::TensorOptions().dtype(torch::kFloat64));
+        at::Tensor H = libSGT::compute_Hd_int(q_tensor);
+        at::Tensor energy, state;
+        std::tie(energy, state) = H.symeig();
+        e = energy[state_of_interest].item<double>();
     }
-    void g(double * g, const double * q, const int & N) {
-        at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
-        FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
-        at::Tensor energy, dH;
-        std::tie(energy, dH) = compute_energy_dH(r);
-        double * qtemp = new double[intdim];
-        FL::GT::Cartesian2Internal(r.data_ptr<double>(), dH[state][state].data_ptr<double>(),
-            qtemp, g, cartdim, intdim, 1, DefID);
-        delete [] qtemp;
+    void g(double * g, const double * q, const int & intdim) {
+        at::Tensor q_tensor = at::from_blob(const_cast<double *>(q), intdim, at::TensorOptions().dtype(torch::kFloat64));
+        q_tensor.set_requires_grad(true);
+        at::Tensor H, dH;
+        std::tie(H, dH) = libSGT::compute_Hd_dHd_int(q_tensor);
+        at::Tensor energy, state;
+        std::tie(energy, state) = H.symeig(true);
+        CL::TS::LA::UT_A3_U_(dH, state);
+        std::memcpy(g, dH[state_of_interest][state_of_interest].data_ptr<double>(), intdim * sizeof(double));
     }
-    int e_g(double & e, double * g, const double * q, const int & N) {
-        at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
-        FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
-        at::Tensor energy, dH;
-        std::tie(energy, dH) = compute_energy_dH(r);
-        e = energy[state].item<double>();
-        double * qtemp = new double[intdim];
-        FL::GT::Cartesian2Internal(r.data_ptr<double>(), dH[state][state].data_ptr<double>(),
-            qtemp, g, cartdim, intdim, 1, DefID);
-        delete [] qtemp;
+    int e_g(double & e, double * g, const double * q, const int & intdim) {
+        at::Tensor q_tensor = at::from_blob(const_cast<double *>(q), intdim, at::TensorOptions().dtype(torch::kFloat64));
+        q_tensor.set_requires_grad(true);
+        at::Tensor H, dH;
+        std::tie(H, dH) = libSGT::compute_Hd_dHd_int(q_tensor);
+        at::Tensor energy, state;
+        std::tie(energy, state) = H.symeig(true);
+        CL::TS::LA::UT_A3_U_(dH, state);
+        e = energy[state_of_interest].item<double>();
+        std::memcpy(g, dH[state_of_interest][state_of_interest].data_ptr<double>(), intdim * sizeof(double));
         return 0;
     }
-    void gap(double * gap, const double * q, const int & M, const int & N) {
-        at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
-        FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
-        at::Tensor energy = compute_energy(r);
-        gap[0] = (energy[state+1] - energy[state]).item<double>();
-    }
-    void gapgrad(double * gapgrad, const double * q, const int & M, const int & N) {
-        at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
-        FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
-        at::Tensor energy, dH;
-        std::tie(energy, dH) = compute_energy_dH(r);
-        dH = dH.slice(0, state, state+2);
-        dH = dH.slice(1, state, state+2);
-        double * qtemp = new double[intdim];
-        double * gtemp = new double[2*2*intdim];
-        FL::GT::Cartesian2Internal(r.data_ptr<double>(), dH.data_ptr<double>(),
-            qtemp, gtemp, cartdim, intdim, 2, DefID);
-        for (size_t i = 0; i < intdim; i++) gapgrad[i] = gtemp[3 * intdim + i] - gtemp[i];
-        delete [] qtemp;
-        delete [] gtemp;
-    }
-
-    // Diabatic "energy", gradient, constraint (gap and off-diagonal), constraint gradient wrapper
-    void ed(double & ed, const double * q, const int & N) {
-        at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
-        FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
-        at::Tensor H = compute_Hd(r);
-        ed = H[state][state].item<double>();
-    }
-    void gd(double * gd, const double * q, const int & N) {
-        at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
-        FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
-        at::Tensor H, dH;
-        std::tie(H, dH) = compute_Hd_dHd(r);
-        double * qtemp = new double[intdim];
-        FL::GT::Cartesian2Internal(r.data_ptr<double>(), dH[state][state].data_ptr<double>(),
-            qtemp, gd, cartdim, intdim, 1, DefID);
-        delete [] qtemp;
-    }
-    int ed_gd(double & ed, double * gd, const double * q, const int & N) {
-        at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
-        FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
-        at::Tensor H, dH;
-        std::tie(H, dH) = compute_Hd_dHd(r);
-        ed = H[state][state].item<double>();
-        double * qtemp = new double[intdim];
-        FL::GT::Cartesian2Internal(r.data_ptr<double>(), dH[state][state].data_ptr<double>(),
-            qtemp, gd, cartdim, intdim, 1, DefID);
-        delete [] qtemp;
+    int h(double * h, const double * q, const int & intdim) {
+        at::Tensor q_tensor = at::from_blob(const_cast<double *>(q), intdim, at::TensorOptions().dtype(torch::kFloat64));
+        q_tensor.set_requires_grad(true);
+        at::Tensor energy, dH, ddH;
+        std::tie(energy, dH, ddH) = libSGT::compute_energy_dHa_ddHa_int(q_tensor);
+        std::memcpy(h, ddH[state_of_interest][state_of_interest].data_ptr<double>(), intdim * intdim * sizeof(double));
         return 0;
     }
-    void c(double * c, const double * q, const int & M, const int & N) {
-        at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
-        FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
-        at::Tensor H = compute_Hd(r);
-        c[0] = (H[state+1][state+1] - H[state][state]).item<double>();
-        c[1] = H[state][state+1].item<double>();
+    void gap(double * gap, const double * q, const int & M, const int & intdim) {
+        at::Tensor q_tensor = at::from_blob(const_cast<double *>(q), intdim, at::TensorOptions().dtype(torch::kFloat64));
+        at::Tensor H = libSGT::compute_Hd_int(q_tensor);
+        at::Tensor energy, state;
+        std::tie(energy, state) = H.symeig();
+        gap[0] = (energy[state_of_interest + 1] - energy[state_of_interest]).item<double>();
     }
-    void cd(double * cd, const double * q, const int & M, const int & N) {
-        at::Tensor r = at::empty(cartdim, at::TensorOptions().dtype(torch::kFloat64));
-        FL::GT::CartesianCoordinate(q, r.data_ptr<double>(), intdim, cartdim, init_geom, DefID);
+    void gapgrad(double * g, const double * q, const int & M, const int & intdim) {
+        at::Tensor q_tensor = at::from_blob(const_cast<double *>(q), intdim, at::TensorOptions().dtype(torch::kFloat64));
+        q_tensor.set_requires_grad(true);
         at::Tensor H, dH;
-        std::tie(H, dH) = compute_Hd_dHd(r);
-        dH = dH.slice(0, state, state+2);
-        dH = dH.slice(1, state, state+2);
-        double * qtemp = new double[intdim];
-        double * gtemp = new double[2*2*intdim];
-        FL::GT::Cartesian2Internal(r.data_ptr<double>(), dH.data_ptr<double>(),
-            qtemp, gtemp, cartdim, intdim, 2, DefID);
-        for (size_t i = 0; i < intdim; i++) {
-            cd[i] = gtemp[3 * intdim + i] - gtemp[i];
-            cd[intdim + i] = gtemp[intdim + i]
-        }
-        delete [] qtemp;
-        delete [] gtemp;
+        std::tie(H, dH) = libSGT::compute_Hd_dHd_int(q_tensor);
+        at::Tensor energy, state;
+        std::tie(energy, state) = H.symeig(true);
+        CL::TS::LA::UT_A3_U_(dH, state);
+        at::Tensor grad = dH[state_of_interest + 1][state_of_interest + 1] - dH[state_of_interest][state_of_interest];
+        std::memcpy(g, grad.data_ptr<double>(), grad.numel() * sizeof(double));
+    }
+    int gaphess(double * h, const double * q, const int & M, const int & intdim) {
+        at::Tensor q_tensor = at::from_blob(const_cast<double *>(q), intdim, at::TensorOptions().dtype(torch::kFloat64));
+        q_tensor.set_requires_grad(true);
+        at::Tensor energy, dH, ddH;
+        std::tie(energy, dH, ddH) = libSGT::compute_energy_dHa_ddHa_int(q_tensor);
+        at::Tensor hess = ddH[state_of_interest + 1][state_of_interest + 1] - ddH[state_of_interest][state_of_interest];
+        std::memcpy(h, hess.data_ptr<double>(), hess.numel() * sizeof(double));
+        return 0;
     }
 
-    void search_mex(bool diabatic, std::string opt) {
-        // FL::NO::TrustRegion(g, );
+    void search_mex(double * q, const int & intdim, size_t state, std::string opt) {
+        state_of_interest = state;
+        FL::NO::AugmentedLagrangian(e, g, e_g, h, gap, gapgrad, gaphess, q, intdim, 1);
     }
 } // namespace mex
