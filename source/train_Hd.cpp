@@ -51,35 +51,44 @@ const std::vector<std::string> & chk, const int64_t & chk_depth, const std::vect
     Hd::nets.resize(Hd::NStates);
     for (int i = 0; i < Hd::NStates; i++) {
         Hd::nets[i].resize(Hd::NStates);
-        for (int j = i; j < Hd::NStates; j++) {
-            Hd::nets[i][j] = std::make_shared<Hd::Net>(ON::PNR[Hd::symmetry[i][j]].size(), Hd::symmetry[i][j] == 0, max_depth);
-            Hd::nets[i][j]->to(torch::kFloat64);
+        Hd::nets[i][i].resize(1);
+        Hd::nets[i][i][0] = std::make_shared<Hd::Net>(ON::PNR[0].size(), true, max_depth);
+        Hd::nets[i][i][0]->to(torch::kFloat64);
+        for (int j = i + 1; j < Hd::NStates; j++) {
+            Hd::nets[i][j].resize(ON::PNR[Hd::symmetry[i][j]].size());
+            for (auto & net : Hd::nets[i][j]) {
+                net = std::make_shared<Hd::Net>(ON::PNR[0].size(), true, max_depth);
+                net->to(torch::kFloat64);
+            }
         }
     }
     if (! chk.empty()) {
-        assert(("Wrong number of checkpoint files", chk.size() == (Hd::NStates+1)*Hd::NStates/2));
         size_t count = 0;
         for (int i = 0; i < Hd::NStates; i++)
-        for (int j = i; j < Hd::NStates; j++) {
-            Hd::nets[i][j]->warmstart(chk[count], chk_depth);
+        for (int j = i; j < Hd::NStates; j++)
+        for (auto & net : Hd::nets[i][j]) {
+            assert((count < chk.size(), "Insufficient checkpoint files"));
+            net->warmstart(chk[count], chk_depth);
             count++;
         }
     }
-    else {
-        if (! guess_diag.empty()) {
-            assert(("Wrong number of initial guesses for Hd diagonals", guess_diag.size() == Hd::NStates));
-            for (int i = 0; i < Hd::NStates; i++) {
-                torch::NoGradGuard no_grad;
-                Hd::nets[i][i]->tail->bias.fill_(guess_diag[i]);
-            }
+    else if (! guess_diag.empty()) {
+        assert(("Wrong number of initial guesses for Hd diagonals", guess_diag.size() == Hd::NStates));
+        for (int i = 0; i < Hd::NStates; i++) {
+            torch::NoGradGuard no_grad;
+            Hd::nets[i][i][0]->tail->bias.fill_(guess_diag[i]);
         }
     }
     for (int i = 0; i < Hd::NStates; i++)
     for (int j = i; j < Hd::NStates; j++) {
-        Hd::nets[i][j]->freeze(freeze);
-        Hd::nets[i][j]->train();
-        std::cout << "Number of trainable network parameters for Hd" << i+1 << j+1 << " = "
-            << CL::TS::NParameters(Hd::nets[i][j]->parameters()) << '\n';
+        size_t count = 0;
+        for (auto & net : Hd::nets[i][j]) {
+            net->freeze(freeze);
+            net->train();
+            count += CL::TS::NParameters(net->parameters());
+        }
+        std::cout << "Number of trainable network parameters for Hd" << i+1 << j+1
+                  << " = " << count << '\n';
     }
 }
 
@@ -91,11 +100,14 @@ std::vector<at::Tensor> & x, const std::vector<at::Tensor> & JT) {
     // Compute diabatic quantity
     at::Tensor  H = Hd::compute_Hd(x);
     at::Tensor dH = H.new_empty({Hd::NStates, Hd::NStates, JT[0].size(0)});
-    for (int i = 0; i < Hd::NStates; i++)
-    for (int j = i; j < Hd::NStates; j++) {
-        auto & irred = Hd::symmetry[i][j];
-        torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {x[irred]}, {}, true, true);
-        dH[i][j] = JT[irred].mv(g[0]);
+    for (int i = 0; i < Hd::NStates; i++) {
+        torch::autograd::variable_list g = torch::autograd::grad({H[i][i]}, {x[0]}, {}, true, true);
+        dH[i][i] = JT[0].mv(g[0]);
+        for (int j = i + 1; j < Hd::NStates; j++) {
+            auto & irred = Hd::symmetry[i][j];
+            torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {x[0], x[irred]}, {}, true, true);
+            dH[i][j] = JT[0].mv(g[0]) + JT[irred].mv(g[1]);
+        }
     }
     // Disable gradient w.r.t. input layer to save CPU during loss.backward
     for (auto & irred : x) irred.set_requires_grad(false);
@@ -216,7 +228,7 @@ namespace FLopt {
     int OMP_NUM_THREADS;
 
     // Hd element networks (each thread owns a copy)
-    std::vector<std::vector<std::vector<std::shared_ptr<Hd::Net>>>> netss;
+    std::vector<std::vector<std::vector<std::vector<std::shared_ptr<Hd::Net>>>>> netss;
 
     // Data set
     std::vector<AbInitio::RegData *> RegSet;
@@ -227,20 +239,29 @@ namespace FLopt {
     // Compute adiabatic energy (Ha) and gradient (dHa) from input layer, J^T, specific network
     inline std::tuple<at::Tensor, at::Tensor> compute_Ha_dHa(
     std::vector<at::Tensor> & x, const std::vector<at::Tensor> & JT,
-    const std::vector<std::vector<std::shared_ptr<Hd::Net>>> & nets) {
+    const std::vector<std::vector<std::vector<std::shared_ptr<Hd::Net>>>> & nets) {
         // Enable gradient w.r.t. input layer to compute dH
         for (auto & irred : x) irred.set_requires_grad(true);
         // Compute diabatic quantity
         at::Tensor H = x[0].new_empty({Hd::NStates, Hd::NStates});
-        for (int i = 0; i < Hd::NStates; i++)
-        for (int j = i; j < Hd::NStates; j++)
-        H[i][j] = nets[i][j]->forward(x[Hd::symmetry[i][j]]);
+        for (int i = 0; i < Hd::NStates; i++) {
+            H[i][i] = nets[i][i][0]->forward(x[0]);
+            for (int j = i + 1; j < Hd::NStates; j++) {
+                auto & irred = x[Hd::symmetry[i][j]];
+                at::Tensor net_outputs = irred.new_empty(irred.sizes());
+                for (int k = 0; k < net_outputs.size(0); k++) net_outputs[k] = nets[i][j][k]->forward(x[0]);
+                H[i][j] = net_outputs.dot(irred);
+            }
+        }
         at::Tensor dH = H.new_empty({Hd::NStates, Hd::NStates, JT[0].size(0)});
-        for (int i = 0; i < Hd::NStates; i++)
-        for (int j = i; j < Hd::NStates; j++) {
-            auto & irred = Hd::symmetry[i][j];
-            torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {x[irred]}, {}, true, true);
-            dH[i][j] = JT[irred].mv(g[0]);
+        for (int i = 0; i < Hd::NStates; i++) {
+            torch::autograd::variable_list g = torch::autograd::grad({H[i][i]}, {x[0]}, {}, true, true);
+            dH[i][i] = JT[0].mv(g[0]);
+            for (int j = i + 1; j < Hd::NStates; j++) {
+                auto & irred = Hd::symmetry[i][j];
+                torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {x[0], x[irred]}, {}, true, true);
+                dH[i][j] = JT[0].mv(g[0]) + JT[irred].mv(g[1]);
+            }
         }
         // Disable gradient w.r.t. input layer to save CPU during loss.backward
         for (auto & irred : x) irred.set_requires_grad(false);
@@ -252,23 +273,25 @@ namespace FLopt {
     }
 
     // Push network parameters to parameter vector c
-    void p2c(const std::vector<std::vector<std::shared_ptr<Hd::Net>>> & nets, double * c) {
+    void p2c(const std::vector<std::vector<std::vector<std::shared_ptr<Hd::Net>>>> & nets, double * c) {
         size_t count = 0;
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        for (auto & p : nets[i][j]->parameters())
+        for (auto & net : nets[i][j])
+        for (auto & p : net->parameters())
         if (p.requires_grad()) {
             std::memcpy(&(c[count]), p.data_ptr<double>(), p.numel() * sizeof(double));
             count += p.numel();
         }
     }
     // The other way round
-    inline void c2p(const double * c, const std::vector<std::vector<std::shared_ptr<Hd::Net>>> & nets) {
+    inline void c2p(const double * c, const std::vector<std::vector<std::vector<std::shared_ptr<Hd::Net>>>> & nets) {
         torch::NoGradGuard no_grad;
         size_t count = 0;
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        for (auto & p : nets[i][j]->parameters())
+        for (auto & net : nets[i][j])
+        for (auto & p : net->parameters())
         if (p.requires_grad()) {
             std::memcpy(p.data_ptr<double>(), &(c[count]), p.numel() * sizeof(double));
             count += p.numel();
@@ -276,12 +299,13 @@ namespace FLopt {
     }
 
     // Push the network parameter gradient to Jacobian^T 
-    inline void dp2JT(const std::vector<std::vector<std::shared_ptr<Hd::Net>>> & nets,
+    inline void dp2JT(const std::vector<std::vector<std::vector<std::shared_ptr<Hd::Net>>>> & nets,
     double * JT, const int & NEq, const size_t & column) {
         size_t row = 0;
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        for (auto & p : nets[i][j]->parameters())
+        for (auto & net : nets[i][j])
+        for (auto & p : net->parameters())
         if (p.requires_grad()) {
             double * pg = p.grad().data_ptr<double>();
             for (size_t i = 0; i < p.grad().numel(); i++) {
@@ -291,10 +315,11 @@ namespace FLopt {
         }
     }
 
-    inline void net_zero_grad(const std::vector<std::vector<std::shared_ptr<Hd::Net>>> & nets) {
+    inline void net_zero_grad(const std::vector<std::vector<std::vector<std::shared_ptr<Hd::Net>>>> & nets) {
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        for (auto & p : nets[i][j]->parameters())
+        for (auto & net : nets[i][j])
+        for (auto & p : net->parameters())
         if (p.requires_grad() && p.grad().defined()) {
             p.grad().detach_();
             p.grad().zero_();
@@ -364,7 +389,8 @@ namespace FLopt {
         size_t count = 0;
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        for (auto & p : netss[0][i][j]->parameters())
+        for (auto & net : netss[0][i][j])
+        for (auto & p : net->parameters())
         if (p.requires_grad()) {
             std::memcpy(&(g[count]), p.grad().data_ptr<double>(), p.grad().numel() * sizeof(double));
             count += p.grad().numel();
@@ -373,7 +399,8 @@ namespace FLopt {
             size_t count = 0;
             for (int i = 0; i < Hd::NStates; i++)
             for (int j = i; j < Hd::NStates; j++)
-            for (auto & p : netss[thread][i][j]->parameters())
+            for (auto & net : netss[thread][i][j])
+            for (auto & p : net->parameters())
             if (p.requires_grad()) {
                 double * pg = p.grad().data_ptr<double>();
                 for (size_t i = 0; i < p.grad().numel(); i++) {
@@ -418,7 +445,8 @@ namespace FLopt {
         size_t count = 0;
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        for (auto & p : netss[0][i][j]->parameters())
+        for (auto & net : netss[0][i][j])
+        for (auto & p : net->parameters())
         if (p.requires_grad()) {
             std::memcpy(&(g[count]), p.grad().data_ptr<double>(), p.grad().numel() * sizeof(double));
             count += p.grad().numel();
@@ -427,7 +455,8 @@ namespace FLopt {
             size_t count = 0;
             for (int i = 0; i < Hd::NStates; i++)
             for (int j = i; j < Hd::NStates; j++)
-            for (auto & p : netss[thread][i][j]->parameters())
+            for (auto & net : netss[thread][i][j])
+            for (auto & p : net->parameters())
             if (p.requires_grad()) {
                 double * pg = p.grad().data_ptr<double>();
                 for (size_t i = 0; i < p.grad().numel(); i++) {
@@ -585,11 +614,14 @@ namespace FLopt {
             for (int i = 0; i < Hd::NStates; i++) {
                 nets[i].resize(Hd::NStates);
                 for (int j = i; j < Hd::NStates; j++) {
-                    nets[i][j] = std::make_shared<Hd::Net>(ON::PNR[Hd::symmetry[i][j]].size(), Hd::symmetry[i][j] == 0, Hd::nets[i][j]->fc.size());
-                    nets[i][j]->to(torch::kFloat64);
-                    nets[i][j]->copy(Hd::nets[i][j]);
-                    nets[i][j]->freeze(freeze_);
-                    nets[i][j]->train();
+                    nets[i][j].resize(Hd::nets[i][j].size());
+                    for (int k = 0; k < nets[i][j].size(); k++) {
+                        nets[i][j][k] = std::make_shared<Hd::Net>(ON::PNR[0].size(), true, Hd::nets[i][j][k]->fc.size());
+                        nets[i][j][k]->to(torch::kFloat64);
+                        nets[i][j][k]->copy(Hd::nets[i][j][k]);
+                        nets[i][j][k]->freeze(freeze_);
+                        nets[i][j][k]->train();
+                    }
                 }
             }
         }
@@ -622,7 +654,8 @@ namespace FLopt {
         int Nc = 0;
         for (int i = 0; i < Hd::NStates; i++)
         for (int j = i; j < Hd::NStates; j++)
-        Nc += CL::TS::NParameters(netss[0][i][j]->parameters());
+        for (auto & net : netss[0][i][j])
+        Nc += CL::TS::NParameters(net->parameters());
         std::cout << "There are " << Nc << " parameters to train\n";
         double * c = new double[Nc];
         p2c(Hd::nets, c);
@@ -638,7 +671,8 @@ namespace FLopt {
         }
         else if (opt == "CG") {
             FL::NO::ConjugateGradient(loss, grad, loss_grad, c, Nc, "DY", false, true, epoch);
-        } else {
+        }
+        else {
             for (auto & data : RegSet) data->weight = std::sqrt(data->weight);
             FL::NO::TrustRegion(residue, Jacobian, c, NEq, Nc, true, epoch);
             for (auto & data : RegSet) data->weight = data->weight * data->weight;
@@ -682,8 +716,9 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
         // Concatenate network parameters
         std::vector<at::Tensor> parameters;
         for (int i = 0; i < Hd::NStates; i++)
-        for (int j = i; j < Hd::NStates; j++) {
-            std::vector<at::Tensor> par = Hd::nets[i][j]->parameters();
+        for (int j = i; j < Hd::NStates; j++)
+        for (auto & net : Hd::nets[i][j]) {
+            std::vector<at::Tensor> par = net->parameters();
             parameters.insert(parameters.end(), par.begin(), par.end());
         }
         if (opt == "Adam") {
@@ -715,9 +750,12 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                     std::cout << "epoch = " << iepoch << '\n'
                               << "For regular data, RMSD(H) = " << regRMSD_H << ", RMSD(dH) = " << regRMSD_dH << '\n'
                               << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << std::endl;
-                    for (int i = 0; i < Hd::NStates; i++)
-                    for (int j = i; j < Hd::NStates; j++)
-                    torch::save(Hd::nets[i][j], "Hd"+std::to_string(i+1)+std::to_string(j+1)+"_"+std::to_string(iepoch)+".net");
+                    for (int i = 0; i < Hd::NStates; i++) {
+                        torch::save(Hd::nets[i][i][0], "Hd"+std::to_string(i+1)+std::to_string(i+1)+"_"+std::to_string(iepoch)+".net");
+                        for (int j = i + 1; j < Hd::NStates; j++)
+                        for (int k = 0; k < Hd::nets[i][j].size(); k++)
+                        torch::save(Hd::nets[i][j][k], "Hd"+std::to_string(i+1)+std::to_string(j+1)+"_"+std::to_string(k)+"_"+std::to_string(iepoch)+".net");
+                    }
                     torch::save(optimizer, "Hd_"+std::to_string(iepoch)+".opt");
                 }
             }
@@ -753,9 +791,12 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                     std::cout << "epoch = " << iepoch << '\n'
                               << "For regular data, RMSD(H) = " << regRMSD_H << ", RMSD(dH) = " << regRMSD_dH << '\n'
                               << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << std::endl;
-                    for (int i = 0; i < Hd::NStates; i++)
-                    for (int j = i; j < Hd::NStates; j++)
-                    torch::save(Hd::nets[i][j], "Hd"+std::to_string(i+1)+std::to_string(j+1)+"_"+std::to_string(iepoch)+".net");
+                    for (int i = 0; i < Hd::NStates; i++) {
+                        torch::save(Hd::nets[i][i][0], "Hd"+std::to_string(i+1)+std::to_string(i+1)+"_"+std::to_string(iepoch)+".net");
+                        for (int j = i + 1; j < Hd::NStates; j++)
+                        for (int k = 0; k < Hd::nets[i][j].size(); k++)
+                        torch::save(Hd::nets[i][j][k], "Hd"+std::to_string(i+1)+std::to_string(j+1)+"_"+std::to_string(k)+"_"+std::to_string(iepoch)+".net");
+                    }
                     torch::save(optimizer, "Hd_"+std::to_string(iepoch)+".opt");
                 }
             }
@@ -769,9 +810,12 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
         std::tie(degRMSD_H, degRMSD_dH) = RMSD_deg(DegSet->example());
         std::cout << "For regular data, RMSD(H) = " << regRMSD_H << ", RMSD(dH) = " << regRMSD_dH << '\n'
                   << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << '\n';
-        for (int i = 0; i < Hd::NStates; i++)
-        for (int j = i; j < Hd::NStates; j++)
-        torch::save(Hd::nets[i][j], "Hd"+std::to_string(i+1)+std::to_string(j+1)+".net");
+        for (int i = 0; i < Hd::NStates; i++) {
+            torch::save(Hd::nets[i][i][0], "Hd"+std::to_string(i+1)+std::to_string(i+1)+".net");
+            for (int j = i + 1; j < Hd::NStates; j++)
+            for (int k = 0; k < Hd::nets[i][j].size(); k++)
+            torch::save(Hd::nets[i][j][k], "Hd"+std::to_string(i+1)+std::to_string(j+1)+"_"+std::to_string(k)+".net");
+        }
     }
 }
 

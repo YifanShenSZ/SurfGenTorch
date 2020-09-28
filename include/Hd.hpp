@@ -22,7 +22,7 @@ extern int NStates;
 // Symmetry of Hd elements
 extern size_t ** symmetry;
 // Each Hd element owns a network
-extern std::vector<std::vector<std::shared_ptr<Net>>> nets;
+extern std::vector<std::vector<std::vector<std::shared_ptr<Net>>>> nets;
 
 // The 0th irreducible is assumed to be totally symmetric
 void define_Hd(const std::string & Hd_in);

@@ -35,12 +35,6 @@ build/
 *.out
 *.app
 
-# Visual studio
-test-windows/
-
-# Back up
-BAK/
-
 # Test and back up
 test/
 BAK/
