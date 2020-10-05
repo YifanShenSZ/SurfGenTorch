@@ -1,0 +1,36 @@
+Number of electronic states:
+    3
+Symmetry of Hamiltonian matrix elements:
+    1 2 3
+    2 1 4
+    3 4 1
+The dimensions of each network:
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+Network parameters to warmstart from:
+    Hd11.net
+    Hd12_0.net
+    Hd12_1.net
+    Hd13_0.net
+    Hd13_1.net
+    Hd22.net
+    Hd23_0.net
+    Hd23_1.net
+    Hd33.net
+The dimensions of each checkpoint network:
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2
+     5     4     3     2

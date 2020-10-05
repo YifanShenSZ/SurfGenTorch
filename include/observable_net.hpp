@@ -16,21 +16,29 @@ To maintain symmetry:
 namespace ON {
 
 // The general form for a matrix element of an observable
+// Only the totally symmetric irreducible has bias
 struct Net : torch::nn::Module {
+    // Fully connected layers to gradually reduce dimensionality
     std::vector<torch::nn::Linear *> fc;
+    // A dot product to reduce to scalar
     torch::nn::Linear tail{nullptr};
+    // A status flag: whether the network has been warmstarted or not
+    bool cold = true;
 
     Net();
-    // Totally symmetric irreducible additionally has const term (bias)
-    // max_depth < 0 means unlimited
-    Net(const size_t & init_dim, const bool & totally_symmetric, const int64_t & max_depth = -1);
+    // The dimensions of `fc` are determined by `dims`
+    Net(const std::vector<size_t> dims, const bool & totally_symmetric);
+    // Same structure to net
+    Net(const std::shared_ptr<Net> & net);
     ~Net();
 
     at::Tensor forward(const at::Tensor & x);
 
-    // For training
+    // Copy the parameters from net
     void copy(const std::shared_ptr<Net> & net);
-    void warmstart(const std::string & chk, const int64_t & chk_depth);
+    // Warmstart from checkpoint
+    void warmstart(const std::string & chk, const std::vector<size_t> chk_dims);
+    // Freeze the leading `freeze` layers in fc
     void freeze(const size_t & freeze);
 };
 

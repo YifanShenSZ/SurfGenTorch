@@ -14,26 +14,46 @@ To maintain symmetry:
 
 namespace DimRed {
 
+// Only the totally symmetric irreducible has bias
 struct Net : torch::nn::Module {
-    std::vector<torch::nn::Linear *> fc, fc_inv;
+    // Fully connected layer to reduce dimensionality
+    std::vector<torch::nn::Linear *> fc;
+    // Fully connected layer to inverse the reduction
+    std::vector<torch::nn::Linear *> fc_inv;
+    // A status flag: whether the network has been warmstarted or not
+    bool cold = true;
 
     Net();
-    // Totally symmetric irreducible additionally has const term (bias)
-    // max_depth < 0 means unlimited
-    Net(const size_t & init_dim, const bool & totally_symmetric, const int64_t & max_depth = -1);
+    // The dimensions of `fc` are determined by `dims`
+    // `fc_inv` has the mirror structure to `fc`
+    Net(const std::vector<size_t> dims, const bool & totally_symmetric);
+    // Same structure to net
+    Net(const std::shared_ptr<Net> & net);
     ~Net();
 
     at::Tensor reduce(const at::Tensor & x);
     at::Tensor inverse(const at::Tensor & x);
-
-    // For pretraining
     at::Tensor forward(const at::Tensor & x);
+
+    // Copy the parameters from net
     void copy(const std::shared_ptr<Net> & net);
-    void warmstart(const std::string & chk, const int64_t & chk_depth);
+    // Warmstart from checkpoint
+    void warmstart(const std::string & chk, const std::vector<size_t> chk_dims);
+    // Freeze the leading `freeze` layers in fc and fc_inv
     void freeze(const size_t & freeze);
+    // Freeze fc
+    void freeze_reduction();
+    // Freeze fc_inv
+    void freeze_inverse();
 };
 
-// The 0th irreducible is assumed to be totally symmetric
+// Each irreducible owns a network
+extern std::vector<std::shared_ptr<Net>> nets;
+
+// Define the dimensionality reduction and set to training mode
+void define_DimRed_train(const std::string & DimRed_in);
+
+// Define the dimensionality reduction and set to evaluation mode
 void define_DimRed(const std::string & DimRed_in);
 
 std::vector<at::Tensor> reduce(const std::vector<at::Tensor> & x);

@@ -1,10 +1,11 @@
 /*
 To load and process ab initio data
 
-The ab initio data will be classified into regular or degenerate,
-based on energy gap and degeneracy threshold
+The most basic ab initio data is geometry, who is the independent variable for any observable
+The geometry itself can also feed unsupervised learning e.g. autoencoder
 
-In addition, geometries can be extracted alone to feed pretraining
+A common label is Hamiltonian (and gradient), who is classified into regular or degenerate based on degeneracy threshold
+A regular Hamiltonian is in adiabatic representation, while a degenerate one is in composite representation
 */
 
 #include <torch/torch.h>
@@ -19,6 +20,7 @@ In addition, geometries can be extracted alone to feed pretraining
 
 namespace AbInitio {
 
+// Degeneracy threshold for Hamiltonian
 const double DegThresh = 0.0001;
 
 GeomLoader::GeomLoader() {
@@ -29,53 +31,74 @@ GeomLoader::~GeomLoader() {}
 geom::geom() {}
 geom::geom(const GeomLoader & loader) {
     at::Tensor q = CL::TS::IC::compute_IC(loader.r);
-    SAIgeom = SSAIC::compute_SSAIC(q);
+    SSAq = SSAIC::compute_SSAIC(q);
 }
 geom::~geom() {}
 
-DataLoader::DataLoader() {}
-DataLoader::~DataLoader() {}
-void DataLoader::init(const int64_t & NStates)  {
+HamLoader::HamLoader() {}
+HamLoader::HamLoader(const int64_t & NStates) {
     c10::TensorOptions top = at::TensorOptions().dtype(torch::kFloat64);
     this->r      = at::empty(SSAIC::cartdim, top);
     this->energy = at::empty(NStates, top);
     this->dH     = at::empty({NStates, NStates, SSAIC::cartdim}, top);
 }
-void DataLoader::cart2int() {
-    std::tie(q, J) = CL::TS::IC::compute_IC_J(r);
+HamLoader::~HamLoader() {}
+void HamLoader::reset(const int64_t & NStates)  {
+    c10::TensorOptions top = at::TensorOptions().dtype(torch::kFloat64);
+    this->r      = at::empty(SSAIC::cartdim, top);
+    this->energy = at::empty(NStates, top);
+    this->dH     = at::empty({NStates, NStates, SSAIC::cartdim}, top);
 }
-void DataLoader::SubtractRef(const double & zero_point) {
+// Subtract energy zero point
+void HamLoader::subtract_zero_point(const double & zero_point) {
     energy -= zero_point;
 }
 
-// Regular data
-RegData::RegData() {}
-RegData::RegData(DataLoader & loader) {
-    // input_layer and J^T
-    at::Tensor & q = loader.q;
+RegHam::RegHam() {}
+RegHam::RegHam(const HamLoader & loader, const bool & train_DimRed) {
+    at::Tensor q, J_q_r;
+    std::tie(q, J_q_r) = CL::TS::IC::compute_IC_J(loader.r);
     q.set_requires_grad(true);
-    std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
-    std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
-    input_layer = ON::input_layer(Redgeom);
-    JT.resize(input_layer.size());
-    for (size_t irred = 0; irred < input_layer.size(); irred++) {
-        at::Tensor J_InpLay_q = at::empty(
-            {input_layer[irred].size(0), q.size(0)},
+    // Scaled and symmetry adapted internal coordinate and
+    // its Jacobian^T w.r.t. Cartesian coordinate
+    SSAq = SSAIC::compute_SSAIC(q);
+    J_SSAq_r_T.resize(SSAq.size());
+    for (size_t irred = 0; irred < SSAq.size(); irred++) {
+        at::Tensor J_SSAq_q = at::empty(
+            {SSAq[irred].numel(), q.numel()},
             at::TensorOptions().dtype(torch::kFloat64));
-        for (size_t i = 0; i < input_layer[irred].size(0); i++) {
-            torch::autograd::variable_list g = torch::autograd::grad({input_layer[irred][i]}, {q}, {}, true);
-            J_InpLay_q[i].copy_(g[0]);
+        for (size_t i = 0; i < SSAq[irred].numel(); i++) {
+            torch::autograd::variable_list g = torch::autograd::grad({SSAq[irred][i]}, {q}, {}, true);
+            J_SSAq_q[i].copy_(g[0]);
         }
-        JT[irred] = (J_InpLay_q.mm(loader.J)).transpose(0, 1);
+        J_SSAq_r_T[irred] = (J_SSAq_q.mm(J_q_r)).transpose(0, 1);
+    }
+    if (! train_DimRed) {
+        // Observable net input layer and its Jacobian^T w.r.t. Cartesian coordinate
+        std::vector<at::Tensor> Redq = DimRed::reduce(SSAq);
+        input_layer = ON::input_layer(Redq);
+        J_IL_r_T.resize(input_layer.size());
+        for (size_t irred = 0; irred < input_layer.size(); irred++) {
+            at::Tensor J_IL_q = at::empty(
+                {input_layer[irred].size(0), q.size(0)},
+                at::TensorOptions().dtype(torch::kFloat64));
+            for (size_t i = 0; i < input_layer[irred].size(0); i++) {
+                torch::autograd::variable_list g = torch::autograd::grad({input_layer[irred][i]}, {q}, {}, true);
+                J_IL_q[i].copy_(g[0]);
+            }
+            J_IL_r_T[irred] = (J_IL_q.mm(J_q_r)).transpose_(0, 1);
+        }
+        // Stop autograd
+        for (at::Tensor & irred : input_layer) irred.detach_();
     }
     // Stop autograd
-    for (at::Tensor & irred : input_layer) irred.detach_();
+    for (at::Tensor & irred : SSAq) irred.detach_();
     // energy and dH
     energy = loader.energy.clone();
     dH = loader.dH.clone();
 }
-RegData::~RegData() {}
-void RegData::adjust_weight(const double & Ethresh) {
+RegHam::~RegHam() {}
+void RegHam::adjust_weight(const double & Ethresh) {
     double temp = energy[0].item<double>();
     if ( temp > Ethresh) {
         temp = Ethresh / temp;
@@ -83,32 +106,13 @@ void RegData::adjust_weight(const double & Ethresh) {
     }
 }
 
-DegData::DegData() {}
-DegData::DegData(DataLoader & loader) {
-    // input_layer and J^T
-    at::Tensor & q = loader.q;
-    q.set_requires_grad(true);
-    std::vector<at::Tensor> SAIgeom = SSAIC::compute_SSAIC(q);
-    std::vector<at::Tensor> Redgeom = DimRed::reduce(SAIgeom);
-    input_layer = ON::input_layer(Redgeom);
-    JT.resize(input_layer.size());
-    for (size_t irred = 0; irred < input_layer.size(); irred++) {
-        at::Tensor J_InpLay_q = at::empty(
-            {input_layer[irred].size(0), q.size(0)},
-            at::TensorOptions().dtype(torch::kFloat64));
-        for (size_t i = 0; i < input_layer[irred].size(0); i++) {
-            torch::autograd::variable_list g = torch::autograd::grad({input_layer[irred][i]}, {q}, {}, true);
-            J_InpLay_q[i].copy_(g[0]);
-        }
-        JT[irred] = (J_InpLay_q.mm(loader.J)).transpose(0, 1);
-    }
-    // Stop autograd
-    for (at::Tensor & irred : input_layer) irred.detach_();
-    // H and dH
-    H = loader.energy; dH = loader.dH;
+DegHam::DegHam() {}
+DegHam::DegHam(const HamLoader & loader, const bool & train_DimRed) : RegHam(loader, train_DimRed) {
+    // H and dH in composite representation
+    H = energy;
     CL::TS::chemistry::composite_representation(H, dH);
 }
-DegData::~DegData() {}
+DegHam::~DegHam() {}
 
 DataSet<geom> * read_GeomSet(const std::vector<std::string> & data_set) {
     DataSet<geom> * GeomSet;
@@ -148,8 +152,8 @@ DataSet<geom> * read_GeomSet(const std::vector<std::string> & data_set) {
     return GeomSet;
 }
 
-std::tuple<DataSet<RegData> *, DataSet<DegData> *> read_DataSet(
-const std::vector<std::string> & data_set,
+std::tuple<DataSet<RegHam> *, DataSet<DegHam> *> read_HamSet(
+const std::vector<std::string> & data_set, const bool & train_DimRed,
 const double & zero_point, const double & weight) {
     // Count the number of data
     std::vector<size_t> NDataPerSet(data_set.size());
@@ -159,8 +163,8 @@ const double & zero_point, const double & weight) {
         NDataTotal += NDataPerSet[its];
     }
     // data set loader
-    std::vector<RegData *> vec_p_RegData(NDataTotal);
-    std::vector<DegData *> vec_p_DegData(NDataTotal);
+    std::vector<RegHam *> vec_p_RegData(NDataTotal);
+    std::vector<DegHam *> vec_p_DegData(NDataTotal);
     size_t NRegData = 0;
     size_t NDegData = 0;
     // Read training set files
@@ -181,8 +185,8 @@ const double & zero_point, const double & weight) {
             }
         ifs_valid_states.close();
         // raw data loader
-        std::vector<DataLoader> RawDataLoader(NDataPerSet[its]);
-        for (auto & loader : RawDataLoader) loader.init(NStates);
+        std::vector<HamLoader> RawDataLoader(NDataPerSet[its]);
+        for (auto & loader : RawDataLoader) loader.reset(NStates);
         // r
         ifs.open(data_set[its]+"geom.data");
             for (size_t i = 0; i < NDataPerSet[its]; i++)
@@ -223,15 +227,13 @@ const double & zero_point, const double & weight) {
         } }
         // Process raw data
         for (auto & loader : RawDataLoader) {
-            // Modify raw data: cart2int and SubtractRef
-            loader.cart2int();
-            loader.SubtractRef(zero_point);
+            loader.subtract_zero_point(zero_point);
             // Insert to data set loader
             if (CL::TS::chemistry::check_degeneracy(DegThresh, loader.energy)) {
-                vec_p_DegData[NDegData] = new DegData(loader);
+                vec_p_DegData[NDegData] = new DegHam(loader, train_DimRed);
                 NDegData++;
             } else {
-                vec_p_RegData[NRegData] = new RegData(loader);
+                vec_p_RegData[NRegData] = new RegHam(loader, train_DimRed);
                 vec_p_RegData[NRegData]->adjust_weight(weight);
                 NRegData++;
             }
@@ -240,8 +242,8 @@ const double & zero_point, const double & weight) {
     // Create DataSet with data set loader
     vec_p_RegData.resize(NRegData);
     vec_p_DegData.resize(NDegData);
-    DataSet<RegData> * RegSet = new DataSet<RegData>(vec_p_RegData);
-    DataSet<DegData> * DegSet = new DataSet<DegData>(vec_p_DegData);
+    DataSet<RegHam> * RegSet = new DataSet<RegHam>(vec_p_RegData);
+    DataSet<DegHam> * DegSet = new DataSet<DegHam>(vec_p_DegData);
     return std::make_tuple(RegSet, DegSet);
 }
 

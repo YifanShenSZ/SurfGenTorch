@@ -124,15 +124,27 @@ int main(int argc, const char** argv) {
             if (args.gotArgument("weight")) weight = args.retrieve<double>("weight");
             // Run
             // Read data set
-            AbInitio::DataSet<AbInitio::RegData> * RegSet;
-            AbInitio::DataSet<AbInitio::DegData> * DegSet;
-            std::tie(RegSet, DegSet) = AbInitio::read_DataSet(data_set, zero_point, weight);
+            AbInitio::DataSet<AbInitio::RegHam> * RegSet;
+            AbInitio::DataSet<AbInitio::DegHam> * DegSet;
+            std::tie(RegSet, DegSet) = AbInitio::read_HamSet(data_set, zero_point, weight);
             std::cout << "Number of regular data = " << RegSet->size_int() << '\n';
             size_t count = 0;
             for (auto & data : RegSet->example()) {
                 std::cout << "Data " << count << ":\n";
-                std::cout << "Reduced geometry:\n";
-                for (auto & irred : data->input_layer) std::cout << irred[irred.numel()-1] << '\n';
+                std::cout << "Input layer:\n";
+                for (size_t i = 0; i < data->input_layer.size(); i++) {
+                    std::cout << "Irreducible " << i + 1 << ":\n"
+                              << data->input_layer[i] << '\n';
+                }
+                std::cout << "Eigenvalues of Jacobian . Jacobian^T:\n";
+                for (size_t i = 0; i < data->JT.size(); i++) {
+                    auto & irred = data->JT[i];
+                    at::Tensor JJT = irred.transpose(0, 1).mm(irred);
+                    at::Tensor eigval, eigvec;
+                    std::tie(eigval, eigvec) = JJT.symeig();
+                    std::cout << "Irreducible " << i + 1 << ":\n"
+                              << eigval << '\n';
+                }
                 std::cout << "Energy:\n" << data->energy << '\n';
                 count++;
             }
@@ -140,8 +152,20 @@ int main(int argc, const char** argv) {
             count = 0;
             for (auto & data : DegSet->example()) {
                 std::cout << "Data " << count << ":\n";
-                std::cout << "Reduced geometry:\n";
-                for (auto & irred : data->input_layer) std::cout << irred[irred.numel()-1] << '\n';
+                std::cout << "Input layer:\n";
+                for (size_t i = 0; i < data->input_layer.size(); i++) {
+                    std::cout << "Irreducible " << i + 1 << ":\n"
+                              << data->input_layer[i] << '\n';
+                }
+                std::cout << "Eigenvalues of Jacobian . Jacobian^T:\n";
+                for (size_t i = 0; i < data->JT.size(); i++) {
+                    auto & irred = data->JT[i];
+                    at::Tensor JJT = irred.transpose(0, 1).mm(irred);
+                    at::Tensor eigval, eigvec;
+                    std::tie(eigval, eigvec) = JJT.symeig();
+                    std::cout << "Irreducible " << i + 1 << ":\n"
+                              << eigval << '\n';
+                }
                 std::cout << "Composite representation Hamiltonian:\n" << data->H << '\n';
                 count++;
             }

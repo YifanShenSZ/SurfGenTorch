@@ -18,73 +18,82 @@ To maintain symmetry:
 namespace ON {
 
 // The general form for a matrix element of an observable
+// Only the totally symmetric irreducible has bias
 Net::Net() {}
-// Totally symmetric irreducible additionally has const term (bias)
-// max_depth < 0 means unlimited
-Net::Net(const size_t & init_dim, const bool & totally_symmetric, const int64_t & max_depth) {
-    // Determine depth
-    size_t depth = std::max((int)init_dim - 2, 0);
-    if (max_depth >= 0 && depth > max_depth) depth = max_depth;
-    // The starting layers gradually reduce dimensionality
-    fc.resize(depth);
-    for (size_t i = 0; i < depth; i++) {
+// The dimensions of `fc` are determined by `dims`
+Net::Net(const std::vector<size_t> dims, const bool & totally_symmetric) {
+    // Fully connected layers to gradually reduce dimensionality
+    fc.resize(dims.size() - 1);
+    for (size_t i = 0; i < fc.size(); i++) {
         fc[i] = new torch::nn::Linear{nullptr};
         * fc[i] = register_module("fc-"+std::to_string(i),
             torch::nn::Linear(torch::nn::LinearOptions(
-            init_dim - i, init_dim - i - 1)
+            dims[i], dims[i + 1])
             .bias(totally_symmetric)));
     }
-    // The tail layer reduces to scalar
+    // A dot product to reduce to scalar
     tail = register_module("tail",
         torch::nn::Linear(torch::nn::LinearOptions(
-        init_dim - depth, 1)
+        dims.back(), 1)
         .bias(totally_symmetric)));
+}
+// Same structure to net
+Net::Net(const std::shared_ptr<Net> & net) {
+    fc.resize(net->fc.size());
+    for (size_t i = 0; i < fc.size(); i++) {
+        fc[i] = new torch::nn::Linear{nullptr};
+        * fc[i] = register_module("fc-"+std::to_string(i), torch::nn::Linear((*(net->fc[i]))->options));
+    }
+    tail = register_module("tail", torch::nn::Linear(net->tail->options));
 }
 Net::~Net() {}
 at::Tensor Net::forward(const at::Tensor & x) {
-    at::Tensor y = x.clone();
-    // The starting layers gradually reduce dimensionality
+    at::Tensor y = x;
+    // Fully connected layers to gradually reduce dimensionality
     for (auto & layer : fc) {
         y = (*layer)->forward(y);
         y = torch::tanh(y);
     }
-    // The tail layer reduces to scalar
+    // A dot product to reduce to scalar
     y = tail->forward(y);
     return y[0];
 }
-// For training
+// Copy the parameters from net
 void Net::copy(const std::shared_ptr<Net> & net) {
     torch::NoGradGuard no_grad;
-    for (size_t i = 0; i < (fc.size() < net->fc.size() ? fc.size() : net->fc.size()); i++) {
-        std::memcpy((*fc[i])->weight.data_ptr<double>(),
+    for (size_t i = 0; i < std::min(fc.size(), net->fc.size()); i++) {
+        std::memcpy((*      fc[i]) ->weight.data_ptr<double>(),
                     (*(net->fc[i]))->weight.data_ptr<double>(),
-                    (*fc[i])->weight.numel() * sizeof(double));
+                    (*      fc[i]) ->weight.numel() * sizeof(double));
         if ((*fc[i])->options.bias())
-        std::memcpy((*fc[i])->bias.data_ptr<double>(),
+        std::memcpy((*      fc[i]) ->bias.data_ptr<double>(),
                     (*(net->fc[i]))->bias.data_ptr<double>(),
-                    (*fc[i])->bias.numel() * sizeof(double));
+                    (*      fc[i]) ->bias.numel() * sizeof(double));
     }
     if (tail->weight.numel() == net->tail->weight.numel()) {
-        std::memcpy(tail->weight.data_ptr<double>(),
+        std::memcpy(     tail->weight.data_ptr<double>(),
                     net->tail->weight.data_ptr<double>(),
-                    tail->weight.numel() * sizeof(double));
+                         tail->weight.numel() * sizeof(double));
         if (tail->options.bias())
-        std::memcpy(tail->bias.data_ptr<double>(),
+        std::memcpy(     tail->bias.data_ptr<double>(),
                     net->tail->bias.data_ptr<double>(),
-                    tail->bias.numel() * sizeof(double));
+                         tail->bias.numel() * sizeof(double));
     }
 }
-void Net::warmstart(const std::string & chk, const int64_t & chk_depth) {
-    auto warm_net = std::make_shared<Net>((*fc[0])->options.in_features(), (*fc[0])->options.bias(), chk_depth);
+// Warmstart from checkpoint
+void Net::warmstart(const std::string & chk, const std::vector<size_t> chk_dims) {
+    auto warm_net = std::make_shared<Net>(chk_dims, (*fc[0])->options.bias());
     warm_net->to(torch::kFloat64);
     torch::load(warm_net, chk);
     this->copy(warm_net);
+    this->cold = false;
     warm_net.reset();
 }
+// Freeze the leading `freeze` layers in fc
 void Net::freeze(const size_t & freeze) {
-    for (size_t i = 0; i < freeze; i++) {
+    for (size_t i = 0; i < std::min(freeze, fc.size()); i++) {
         (*fc[i])->weight.set_requires_grad(false);
-        (*fc[i])->bias.set_requires_grad(false);
+        (*fc[i])->bias  .set_requires_grad(false);
     }
 }
 

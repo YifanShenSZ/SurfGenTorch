@@ -18,7 +18,7 @@ double RMSD(const size_t & irred, const std::shared_ptr<DimRed::Net> & net, cons
     double e = 0.0;
     torch::NoGradGuard no_grad;
     for (auto & geom : GeomSet) {
-        e += torch::mse_loss(net->forward(geom->SAIgeom[irred]), geom->SAIgeom[irred],
+        e += torch::mse_loss(net->forward(geom->SSAq[irred]), geom->SSAq[irred],
              at::Reduction::Sum).item<double>();
     }
     e /= GeomSet.size() * SSAIC::NSAIC_per_irred[irred];
@@ -32,6 +32,7 @@ namespace FLopt {
     int OMP_NUM_THREADS;
 
     // The dimensionality reduction network (each thread owns a copy)
+    // The 0th thread shares DimRed::nets[irred]
     std::vector<std::shared_ptr<DimRed::Net>> nets;
 
     // The irreducible to train dimensionality reduction
@@ -80,7 +81,7 @@ namespace FLopt {
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
-                    net->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
+                    net->forward(GeomSet[data]->SSAq[irred]), GeomSet[data]->SSAq[irred],
                     at::Reduction::Sum);
             }
         }
@@ -96,7 +97,7 @@ namespace FLopt {
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
-                    net->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
+                    net->forward(GeomSet[data]->SSAq[irred]), GeomSet[data]->SSAq[irred],
                     at::Reduction::Sum);
             }
             net_zero_grad(net);
@@ -130,7 +131,7 @@ namespace FLopt {
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
-                    net->forward(GeomSet[data]->SAIgeom[irred]), GeomSet[data]->SAIgeom[irred],
+                    net->forward(GeomSet[data]->SSAq[irred]), GeomSet[data]->SSAq[irred],
                     at::Reduction::Sum);
             }
             net_zero_grad(net);
@@ -167,7 +168,7 @@ namespace FLopt {
             c2p(c, net);
             size_t count = start[thread];
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
-                at::Tensor r_tensor = net->forward(GeomSet[data]->SAIgeom[irred]) - GeomSet[data]->SAIgeom[irred];
+                at::Tensor r_tensor = net->forward(GeomSet[data]->SSAq[irred]) - GeomSet[data]->SSAq[irred];
                 std::memcpy(&(r[count]), r_tensor.data_ptr<double>(), r_tensor.numel() * sizeof(double));
                 count += r_tensor.numel();
             }
@@ -180,7 +181,7 @@ namespace FLopt {
             c2p(c, net);
             size_t column = start[thread];
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
-                at::Tensor r_tensor = net->forward(GeomSet[data]->SAIgeom[irred]);
+                at::Tensor r_tensor = net->forward(GeomSet[data]->SSAq[irred]);
                 for (size_t el = 0; el < r_tensor.numel(); el++) {
                     net_zero_grad(net);
                     r_tensor[el].backward({}, true);
@@ -210,9 +211,9 @@ namespace FLopt {
         nets.resize(OMP_NUM_THREADS);
         nets[0] = net_;
         for (int i = 1; i < OMP_NUM_THREADS; i++) {
-            nets[i] = std::make_shared<DimRed::Net>(SSAIC::NSAIC_per_irred[irred], irred == 0, nets[0]->fc.size());
+            nets[i] = std::make_shared<DimRed::Net>(net_);
             nets[i]->to(torch::kFloat64);
-            nets[i]->copy(nets[0]);
+            nets[i]->copy(net_);
             nets[i]->freeze(freeze_);
             nets[i]->train();
         }
@@ -253,17 +254,13 @@ namespace FLopt {
     }
 } // namespace FLopt
 
-void train(const size_t & irred, const int64_t & max_depth, const size_t & freeze,
+void train(const size_t & irred, const size_t & freeze, const std::vector<std::string> & chk,
 const std::vector<std::string> & data_set,
-const std::vector<std::string> & chk, const int64_t & chk_depth,
 const std::string & opt, const size_t & epoch, const size_t & batch_size, const double & learning_rate) {
     std::cout << "Start training dimensionality reduction for irreducible " << irred + 1 << '\n';
     // Initialize network
-    auto net = std::make_shared<DimRed::Net>(SSAIC::NSAIC_per_irred[irred], irred == 0, max_depth);
-    net->to(torch::kFloat64);
-    if (! chk.empty()) net->warmstart(chk[0], chk_depth);
+    auto & net = DimRed::nets[irred];
     net->freeze(freeze);
-    net->train();
     std::cout << "Number of trainable network parameters = " << CL::TS::NParameters(net->parameters()) << '\n';
     // Read geometry set
     auto * GeomSet = AbInitio::read_GeomSet(data_set);
@@ -279,7 +276,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
         if (opt == "Adam") {
             // Create optimizer
             torch::optim::Adam optimizer(net->parameters(), learning_rate);
-            if (chk.size() > 1 && max_depth == chk_depth) torch::load(optimizer, chk[1]);
+            if (! chk.empty()) torch::load(optimizer, chk[0]);
             // Start training
             size_t follow = epoch / 10;
             for (size_t iepoch = 1; iepoch <= epoch; iepoch++) {
@@ -287,7 +284,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                     at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
                     for (auto & data : batch) {
                         loss += torch::mse_loss(
-                            net->forward(data->SAIgeom[irred]), data->SAIgeom[irred],
+                            net->forward(data->SSAq[irred]), data->SSAq[irred],
                             at::Reduction::Sum);
                     }
                     optimizer.zero_grad();
@@ -307,7 +304,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
             torch::optim::SGD optimizer(net->parameters(),
                 torch::optim::SGDOptions(learning_rate)
                 .momentum(0.9).nesterov(true));
-            if (chk.size() > 1 && max_depth == chk_depth) torch::load(optimizer, chk[1]);
+            if (! chk.empty()) torch::load(optimizer, chk[0]);
             // Start training
             size_t follow = epoch / 10;
             for (size_t iepoch = 1; iepoch <= epoch; iepoch++) {
@@ -315,7 +312,7 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
                     at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
                     for (auto & data : batch) {
                         loss += torch::mse_loss(
-                            net->forward(data->SAIgeom[irred]), data->SAIgeom[irred],
+                            net->forward(data->SSAq[irred]), data->SSAq[irred],
                             at::Reduction::Sum);
                     }
                     optimizer.zero_grad();

@@ -30,3 +30,6 @@ Implementation details:
 * The activation function is tanh
 * For the starting layers, each layer has one less neuron than the preceding. The last layer directly reduces to scalar
 So for an N-term symmetry adapted polynomial, the depth of the network <= N - 1, the number of weights <= (N - 1) * N * (N + 1) / 3 + (N - 1) * N / 2
+
+## Nomenclature
+The first irreducible is assumed to be totally symmetric
