@@ -172,7 +172,7 @@ void define_DimRed_train(const std::string & DimRed_in) {
                 chk_dimss.resize(NIrred);
                 for (size_t j = 0; j < NIrred; j++) {
                     std::getline(ifs, line); CL::utility::split(line, strs);
-                    auto & dims = dimss[j];
+                    auto & dims = chk_dimss[j];
                     dims.resize(strs.size());
                     for (size_t i = 0; i < dims.size(); i++) dims[i] = std::stoul(strs[i]);
                 }

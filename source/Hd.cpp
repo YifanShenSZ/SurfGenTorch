@@ -63,7 +63,7 @@ void define_Hd_train(const std::string & Hd_in) {
                 chk_dimss.resize(NNets);
                 for (size_t j = 0; j < NNets; j++) {
                     std::getline(ifs, line); CL::utility::split(line, strs);
-                    auto & dims = dimss[j];
+                    auto & dims = chk_dimss[j];
                     dims.resize(strs.size());
                     for (size_t i = 0; i < dims.size(); i++) dims[i] = std::stoul(strs[i]);
                 }
