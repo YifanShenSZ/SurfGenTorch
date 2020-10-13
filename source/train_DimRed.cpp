@@ -173,10 +173,6 @@ namespace FLopt {
                 count += r_tensor.numel();
             }
         }
-
-double norm = r[0] * r[0];
-for (int i = 1; i < NEq; i++) norm += r[i] * r[i];
-std::cout << "RMSD = " << std::sqrt(norm / 4400.0) << std::endl;
     }
     void Jacobian(double * JT, const double * c, const int & NEq, const int & Nc) {
         #pragma omp parallel for
