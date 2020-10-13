@@ -44,26 +44,26 @@ namespace FLopt {
     std::vector<size_t> chunk, start;
 
     // Push network parameters to parameter vector c
-    void p2c(const std::shared_ptr<DimRed::Net> & net, double * c) {
+    inline void p2c(const int & thread, double * c) {
         size_t count = 0;
-        for (auto & p : net->parameters())
+        for (auto & p : nets[thread]->parameters())
         if (p.requires_grad()) {
             std::memcpy(&(c[count]), p.data_ptr<double>(), p.numel() * sizeof(double));
             count += p.numel();
         }
     }
-    // The other way round
-    void c2p(const double * c, const std::shared_ptr<DimRed::Net> & net) {
+    // Push parameter vector c to network parameters
+    inline void c2p(const double * c, const int & thread) {
         torch::NoGradGuard no_grad;
         size_t count = 0;
-        for (auto & p : net->parameters())
+        for (auto & p : nets[thread]->parameters())
         if (p.requires_grad()) {
             std::memcpy(p.data_ptr<double>(), &(c[count]), p.numel() * sizeof(double));
             count += p.numel();
         }
     }
 
-    void net_zero_grad(const std::shared_ptr<DimRed::Net> & net) {
+    inline void net_zero_grad(const std::shared_ptr<DimRed::Net> & net) {
         for (auto & p : net->parameters())
         if (p.requires_grad() && p.grad().defined()) {
             p.grad().detach_();
@@ -77,7 +77,7 @@ namespace FLopt {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
             auto & net = nets[thread];
-            c2p(c, net);
+            c2p(c, thread);
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
@@ -93,7 +93,7 @@ namespace FLopt {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
             auto & net = nets[thread];
-            c2p(c, net);
+            c2p(c, thread);
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
@@ -127,7 +127,7 @@ namespace FLopt {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
             auto & net = nets[thread];
-            c2p(c, net);
+            c2p(c, thread);
             loss[thread] = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 loss[thread] += torch::mse_loss(
@@ -165,7 +165,7 @@ namespace FLopt {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
             auto & net = nets[thread];
-            c2p(c, net);
+            c2p(c, thread);
             size_t count = start[thread];
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 at::Tensor r_tensor = net->forward(GeomSet[data]->SSAq[irred]) - GeomSet[data]->SSAq[irred];
@@ -173,12 +173,16 @@ namespace FLopt {
                 count += r_tensor.numel();
             }
         }
+
+double norm = r[0] * r[0];
+for (int i = 1; i < NEq; i++) norm += r[i] * r[i];
+std::cout << "RMSD = " << std::sqrt(norm / 4400.0) << std::endl;
     }
     void Jacobian(double * JT, const double * c, const int & NEq, const int & Nc) {
         #pragma omp parallel for
         for (int thread = 0; thread < OMP_NUM_THREADS; thread++) {
             auto & net = nets[thread];
-            c2p(c, net);
+            c2p(c, thread);
             size_t column = start[thread];
             for (size_t data = chunk[thread] - chunk[0]; data < chunk[thread]; data++) {
                 at::Tensor r_tensor = net->forward(GeomSet[data]->SSAq[irred]);
@@ -236,7 +240,7 @@ namespace FLopt {
         int Nc = CL::TS::NParameters(nets[0]->parameters());
         std::cout << "There are " << Nc << " parameters to train\n";
         double * c = new double[Nc];
-        p2c(nets[0], c);
+        p2c(0, c);
         int NEq = SSAIC::NSAIC_per_irred[irred] * OMP_NUM_THREADS * (GeomSet.size() / OMP_NUM_THREADS);
         std::cout << "The data set corresponds to " << NEq << " least square equations" << std::endl;
         // Train
@@ -245,11 +249,12 @@ namespace FLopt {
         }
         else if (opt == "CG") {
             FL::NO::ConjugateGradient(loss, grad, loss_grad, c, Nc, "DY", false, true, epoch);
-        } else {
+        }
+        else {
             FL::NO::TrustRegion(residue, Jacobian, c, NEq, Nc, true, epoch);
         }
         // Finish
-        c2p(c, nets[0]);
+        c2p(c, 0);
         delete [] c;
     }
 } // namespace FLopt

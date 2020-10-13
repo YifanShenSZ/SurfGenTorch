@@ -21,13 +21,15 @@ Net::Net() {}
 // `fc_inv` has the mirror structure to `fc`
 Net::Net(const std::vector<size_t> dims, const bool & totally_symmetric) {
     fc.resize(dims.size() - 1);
-    fc_inv.resize(fc.size());
     for (size_t i = 0; i < fc.size(); i++) {
         fc[i] = new torch::nn::Linear{nullptr};
         * fc[i] = register_module("fc-"+std::to_string(i),
             torch::nn::Linear(torch::nn::LinearOptions(
             dims[i], dims[i + 1])
             .bias(totally_symmetric)));
+    }
+    fc_inv.resize(dims.size() - 1);
+    for (size_t i = 0; i < fc_inv.size(); i++) {
         fc_inv[i] = new torch::nn::Linear{nullptr};
         * fc_inv[i] = register_module("fc_inv-"+std::to_string(i),
             torch::nn::Linear(torch::nn::LinearOptions(

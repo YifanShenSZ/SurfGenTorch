@@ -300,7 +300,7 @@ namespace FLopt {
             count += p.numel();
         }
     }
-    // The other way round
+    // Push parameter vector c to network parameters
     inline void c2p(const double * c, const int & thread) {
         torch::NoGradGuard no_grad;
         size_t count = 0;
