@@ -34,6 +34,9 @@ geom::geom(const GeomLoader & loader) {
     SSAq = SSAIC::compute_SSAIC(q);
 }
 geom::~geom() {}
+void geom::to(const c10::DeviceType & device) {
+    for (at::Tensor & irred : SSAq) irred.to(device);
+}
 
 HamLoader::HamLoader() {}
 HamLoader::HamLoader(const int64_t & NStates) {
@@ -59,24 +62,28 @@ RegHam::RegHam(const HamLoader & loader, const bool & train_DimRed) {
     at::Tensor q, J_q_r;
     std::tie(q, J_q_r) = CL::TS::IC::compute_IC_J(loader.r);
     q.set_requires_grad(true);
-    // Scaled and symmetry adapted internal coordinate and
-    // its Jacobian^T w.r.t. Cartesian coordinate
-    SSAq = SSAIC::compute_SSAIC(q);
-    J_SSAq_r_T.resize(SSAq.size());
-    for (size_t irred = 0; irred < SSAq.size(); irred++) {
-        at::Tensor J_SSAq_q = at::empty(
-            {SSAq[irred].numel(), q.numel()},
-            at::TensorOptions().dtype(torch::kFloat64));
-        for (size_t i = 0; i < SSAq[irred].numel(); i++) {
-            torch::autograd::variable_list g = torch::autograd::grad({SSAq[irred][i]}, {q}, {}, true);
-            J_SSAq_q[i].copy_(g[0]);
+    if (train_DimRed) {
+        // Scaled and symmetry adapted internal coordinate and
+        // its Jacobian^T w.r.t. Cartesian coordinate
+        SSAq = SSAIC::compute_SSAIC(q);
+        J_SSAq_r_T.resize(SSAq.size());
+        for (size_t irred = 0; irred < SSAq.size(); irred++) {
+            at::Tensor J_SSAq_q = at::empty(
+                {SSAq[irred].numel(), q.numel()},
+                at::TensorOptions().dtype(torch::kFloat64));
+            for (size_t i = 0; i < SSAq[irred].numel(); i++) {
+                torch::autograd::variable_list g = torch::autograd::grad({SSAq[irred][i]}, {q}, {}, true);
+                J_SSAq_q[i].copy_(g[0]);
+            }
+            J_SSAq_r_T[irred] = (J_SSAq_q.mm(J_q_r)).transpose(0, 1);
         }
-        J_SSAq_r_T[irred] = (J_SSAq_q.mm(J_q_r)).transpose(0, 1);
+        // Stop autograd
+        for (at::Tensor & irred : SSAq) irred.detach_();
     }
-    if (! train_DimRed) {
-        // Observable net input layer and its Jacobian^T w.r.t. Cartesian coordinate
-        std::vector<at::Tensor> Redq = DimRed::reduce(SSAq);
-        input_layer = ON::input_layer(Redq);
+    else {
+        // Observable net input layer and
+        // its Jacobian^T w.r.t. Cartesian coordinate
+        input_layer = ON::input_layer(DimRed::reduce(SSAIC::compute_SSAIC(q)));
         J_IL_r_T.resize(input_layer.size());
         for (size_t irred = 0; irred < input_layer.size(); irred++) {
             at::Tensor J_IL_q = at::empty(
@@ -91,13 +98,19 @@ RegHam::RegHam(const HamLoader & loader, const bool & train_DimRed) {
         // Stop autograd
         for (at::Tensor & irred : input_layer) irred.detach_();
     }
-    // Stop autograd
-    for (at::Tensor & irred : SSAq) irred.detach_();
     // energy and dH
     energy = loader.energy.clone();
     dH = loader.dH.clone();
 }
 RegHam::~RegHam() {}
+void RegHam::to(const c10::DeviceType & device) {
+    for (at::Tensor & irred : SSAq) irred.to(device);
+    for (at::Tensor & irred : J_SSAq_r_T) irred.to(device);
+    for (at::Tensor & irred : input_layer) irred.to(device);
+    for (at::Tensor & irred : J_IL_r_T) irred.to(device);
+    energy.to(device);
+        dH.to(device);
+}
 void RegHam::adjust_weight(const double & Ethresh) {
     double temp = energy[0].item<double>();
     if ( temp > Ethresh) {
@@ -113,6 +126,15 @@ DegHam::DegHam(const HamLoader & loader, const bool & train_DimRed) : RegHam(loa
     CL::TS::chemistry::composite_representation(H, dH);
 }
 DegHam::~DegHam() {}
+void DegHam::to(const c10::DeviceType & device) {
+    for (at::Tensor & irred : SSAq) irred.to(device);
+    for (at::Tensor & irred : J_SSAq_r_T) irred.to(device);
+    for (at::Tensor & irred : input_layer) irred.to(device);
+    for (at::Tensor & irred : J_IL_r_T) irred.to(device);
+    energy.to(device);
+        dH.to(device);
+         H.to(device);
+}
 
 DataSet<geom> * read_GeomSet(const std::vector<std::string> & data_set) {
     DataSet<geom> * GeomSet;

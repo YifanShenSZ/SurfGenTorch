@@ -33,6 +33,7 @@ argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
     parser.add_argument("-e","--epoch", 1, true, "default = 1000");
     parser.add_argument("-b","--batch_size", 1, true, "batch size for Adam & SGD (default = 32)");
     parser.add_argument("-l","--learning_rate", 1, true, "learning rate for Adam & SGD (default = 0.001)");
+    parser.add_argument("-g","--GPU", 0, true, "use GPU for Adam & SGD");
 
     // for training dimensionality reduction
     parser.add_argument("-i","--irreducible", 1, true, "(job == DimRed) the irreducible to train dimensionality reduction");
@@ -42,10 +43,10 @@ argparse::ArgumentParser parse_args(const int & argc, const char ** & argv) {
     parser.add_argument("-t","--train_DimRed", 0, true, "(job != DimRed) simultaneously train the dimensionality reduction network");
 
     // for training diabatic Hamiltonian
-    parser.add_argument("--Hd_in",             1, true, "(job == Hd) an input file to define diabatic Hamiltonian (Hd)");
-    parser.add_argument("-z","--zero_point",   1, true, "(job == Hd) zero of potential energy, default = 0");
-    parser.add_argument("-w","--weight",       1, true, "(job == Hd) Ethresh in weight adjustment, default = 1");
-    parser.add_argument("-g","--guess_diag", '+', true, "(job == Hd) initial guess of Hd diagonal, default = pytorch initialization");
+    parser.add_argument("--Hd_in",        1, true, "(job == Hd) an input file to define diabatic Hamiltonian (Hd)");
+    parser.add_argument("--zero_point",   1, true, "(job == Hd) zero of potential energy, default = 0");
+    parser.add_argument("--weight",       1, true, "(job == Hd) Ethresh in weight adjustment, default = 1");
+    parser.add_argument("--guess_diag", '+', true, "(job == Hd) initial guess of Hd diagonal, default = pytorch initialization");
 
     parser.parse_args(argc, argv);
     return parser;
@@ -92,7 +93,7 @@ namespace train_DimRed {
 void train(const size_t & irred, const size_t & freeze, const std::vector<std::string> & chk,
 const std::vector<std::string> & data_set,
 const std::string & opt = "TR", const size_t & epoch = 1000,
-const size_t & batch_size = 32, const double & learning_rate = 0.001);
+const size_t & batch_size = 32, const double & learning_rate = 0.001, const bool & GPU = true);
 } // namespace train_DimRed
 
 namespace train_Hd {
@@ -100,7 +101,7 @@ void train(const std::vector<double> & guess_diag, const size_t & freeze, const 
 const std::vector<std::string> & data_set, const bool & train_DimRed,
 const double & zero_point, const double & weight,
 const std::string & opt = "TR", const size_t & epoch = 1000,
-const size_t & batch_size = 32, const double & learning_rate = 0.001);
+const size_t & batch_size = 32, const double & learning_rate = 0.001, const bool & GPU = true);
 } // namespace train_Hd
 
 int main(int argc, const char** argv) {
@@ -142,7 +143,7 @@ int main(int argc, const char** argv) {
         assert(("irreducible out of range", irred < SSAIC::NIrred));
         // Run
         train_DimRed::train(irred, freeze, checkpoint, data_set,
-            optimizer, epoch, batch_size, learning_rate);
+            optimizer, epoch, batch_size, learning_rate, args.gotArgument("GPU"));
     }
     else {
         if (args.gotArgument("train_DimRed")) {
@@ -169,7 +170,7 @@ int main(int argc, const char** argv) {
             train_Hd::train(guess_diag, freeze, checkpoint,
                 data_set, args.gotArgument("train_DimRed"),
                 zero_point, weight,
-                optimizer, epoch, batch_size, learning_rate);
+                optimizer, epoch, batch_size, learning_rate, args.gotArgument("GPU"));
         }
     }
 

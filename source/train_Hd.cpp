@@ -32,25 +32,25 @@ void set_unit(const std::vector<AbInitio::RegHam *> & RegSet) {
 }
 
 // Compute adiabatic energy (Ha) and gradient (dHa) from
-// observable net input layer (x) and its Jacobian^T w.r.t. Cartesian coordinate
+// observable net input layer and its Jacobian^T w.r.t. Cartesian coordinate
 inline std::tuple<at::Tensor, at::Tensor> compute_Ha_dHa(
-std::vector<at::Tensor> & x, const std::vector<at::Tensor> & J_IL_r_T) {
-    // Enable gradient w.r.t. x to compute dH
-    for (auto & irred : x) irred.set_requires_grad(true);
+std::vector<at::Tensor> & input_layer, const std::vector<at::Tensor> & J_IL_r_T) {
+    // Enable gradient w.r.t. input layer to compute dH
+    for (auto & irred : input_layer) irred.set_requires_grad(true);
     // Compute diabatic quantity
-    at::Tensor  H = Hd::compute_Hd(x);
+    at::Tensor  H = Hd::compute_Hd(input_layer);
     at::Tensor dH = H.new_empty({Hd::NStates, Hd::NStates, J_IL_r_T[0].size(0)});
     for (int i = 0; i < Hd::NStates; i++) {
-        torch::autograd::variable_list g = torch::autograd::grad({H[i][i]}, {x[0]}, {}, true, true);
+        torch::autograd::variable_list g = torch::autograd::grad({H[i][i]}, {input_layer[0]}, {}, true, true);
         dH[i][i] = J_IL_r_T[0].mv(g[0]);
         for (int j = i + 1; j < Hd::NStates; j++) {
             auto & irred = Hd::symmetry[i][j];
-            torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {x[0], x[irred]}, {}, true, true);
+            torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {input_layer[0], input_layer[irred]}, {}, true, true);
             dH[i][j] = J_IL_r_T[0].mv(g[0]) + J_IL_r_T[irred].mv(g[1]);
         }
     }
-    // Disable gradient w.r.t. x to save CPU during loss.backward
-    for (auto & irred : x) irred.set_requires_grad(false);
+    // Disable gradient w.r.t. input layer to save CPU during loss.backward
+    for (auto & irred : input_layer) irred.set_requires_grad(false);
     // Transform to adiabatic representation
     at::Tensor energy, state;
     std::tie(energy, state) = H.symeig(true);
@@ -187,6 +187,25 @@ namespace DimRed_trainer {
         return std::make_tuple(energy, dH);
     }
 
+    at::Tensor loss_reg(AbInitio::RegHam * data) {
+        at::Tensor H, dH;
+        std::tie(H, dH) = compute_Ha_dHa(data->SSAq, data->J_SSAq_r_T);
+        slice(data->energy.size(0), H, dH);
+        CL::TS::chemistry::fix(dH, data->dH);
+        at::Tensor loss = unit_square * torch::mse_loss(H, data->energy, at::Reduction::Sum)
+                        + dH_loss(dH, data->dH);
+        return data->weight * loss;
+    }
+    at::Tensor loss_deg(AbInitio::DegHam * data) {
+        at::Tensor H, dH;
+        std::tie(H, dH) = compute_Ha_dHa(data->SSAq, data->J_SSAq_r_T);
+        slice(data->H.size(0), H, dH);
+        CL::TS::chemistry::composite_representation(H, dH);
+        CL::TS::chemistry::fix(H, dH, data->H, data->dH, unit_square);
+        at::Tensor loss = H_dH_loss(H, dH, data->H, data->dH);
+        return loss;
+    }
+
     std::tuple<double, double> RMSD_reg(const std::vector<AbInitio::RegHam *> DataSet) {
         double e_H = 0.0, e_dH = 0.0;
         if (! DataSet.empty()) {
@@ -253,34 +272,34 @@ namespace FLopt {
 
     // Compute adiabatic energy (Ha) and gradient (dHa) from input layer, J^T, specific network
     inline std::tuple<at::Tensor, at::Tensor> compute_Ha_dHa(
-    std::vector<at::Tensor> & x, const std::vector<at::Tensor> & J_IL_r_T,
+    std::vector<at::Tensor> & input_layer, const std::vector<at::Tensor> & J_IL_r_T,
     const int & thread) {
         auto & nets = netss[thread];
         // Enable gradient w.r.t. input layer to compute dH
-        for (auto & irred : x) irred.set_requires_grad(true);
+        for (auto & irred : input_layer) irred.set_requires_grad(true);
         // Compute diabatic quantity
-        at::Tensor H = x[0].new_empty({Hd::NStates, Hd::NStates});
+        at::Tensor H = input_layer[0].new_empty({Hd::NStates, Hd::NStates});
         for (int i = 0; i < Hd::NStates; i++) {
-            H[i][i] = nets[i][i][0]->forward(x[0]);
+            H[i][i] = nets[i][i][0]->forward(input_layer[0]);
             for (int j = i + 1; j < Hd::NStates; j++) {
-                auto & irred = x[Hd::symmetry[i][j]];
+                auto & irred = input_layer[Hd::symmetry[i][j]];
                 at::Tensor net_outputs = irred.new_empty(irred.sizes());
-                for (int k = 0; k < net_outputs.size(0); k++) net_outputs[k] = nets[i][j][k]->forward(x[0]);
+                for (int k = 0; k < net_outputs.size(0); k++) net_outputs[k] = nets[i][j][k]->forward(input_layer[0]);
                 H[i][j] = net_outputs.dot(irred);
             }
         }
         at::Tensor dH = H.new_empty({Hd::NStates, Hd::NStates, J_IL_r_T[0].size(0)});
         for (int i = 0; i < Hd::NStates; i++) {
-            torch::autograd::variable_list g = torch::autograd::grad({H[i][i]}, {x[0]}, {}, true, true);
+            torch::autograd::variable_list g = torch::autograd::grad({H[i][i]}, {input_layer[0]}, {}, true, true);
             dH[i][i] = J_IL_r_T[0].mv(g[0]);
             for (int j = i + 1; j < Hd::NStates; j++) {
                 auto & irred = Hd::symmetry[i][j];
-                torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {x[0], x[irred]}, {}, true, true);
+                torch::autograd::variable_list g = torch::autograd::grad({H[i][j]}, {input_layer[0], input_layer[irred]}, {}, true, true);
                 dH[i][j] = J_IL_r_T[0].mv(g[0]) + J_IL_r_T[irred].mv(g[1]);
             }
         }
         // Disable gradient w.r.t. input layer to save CPU during loss.backward
-        for (auto & irred : x) irred.set_requires_grad(false);
+        for (auto & irred : input_layer) irred.set_requires_grad(false);
         // Transform to adiabatic representation
         at::Tensor energy, state;
         std::tie(energy, state) = H.symeig(true);
@@ -674,7 +693,7 @@ namespace FLopt {
                 count += p.numel();
             }
         }
-        // The other way round
+        // Push parameter vector c to network parameters
         inline void c2p(const double * c, const int & thread) {
             torch::NoGradGuard no_grad;
             size_t count = 0;
@@ -931,7 +950,6 @@ namespace FLopt {
                     nets[i] = std::make_shared<DimRed::Net>(DimRed::nets[i]);
                     nets[i]->to(torch::kFloat64);
                     nets[i]->copy(DimRed::nets[i]);
-                    nets[i]->freeze(freeze_);
                     nets[i]->freeze_inverse();
                     nets[i]->train();
                 }
@@ -964,10 +982,10 @@ namespace FLopt {
             std::cout << "The data set corresponds to " << NEq << " least square equations" << std::endl;
             // Train
             if (opt == "SD") {
-
+                throw "Not implemented\n";
             }
             else if (opt == "CG") {
-
+                throw "Not implemented\n";
             }
             else {
                 for (auto & data : RegSet) data->weight = std::sqrt(data->weight);
@@ -1014,10 +1032,92 @@ namespace FLopt {
     }
 } // namespace FLopt
 
+template <typename T> inline void opt_loop(const bool & train_DimRed,
+AbInitio::DataSet<AbInitio::RegHam> * RegSet, AbInitio::DataSet<AbInitio::DegHam> * DegSet, const size_t & batch_size,
+T & optimizer, const size_t & epoch) {
+    auto reg_loader = torch::data::make_data_loader(* RegSet,
+        torch::data::DataLoaderOptions(batch_size).drop_last(true));
+    auto deg_loader = torch::data::make_data_loader(* DegSet,
+        torch::data::DataLoaderOptions(batch_size).drop_last(true));
+    std::cout << "batch size = " << batch_size << std::endl;
+    size_t follow = epoch / 10;
+    if (train_DimRed)
+    for (size_t iepoch = 1; iepoch <= epoch; iepoch++) {
+        for (auto & batch : * reg_loader) {
+            at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
+            for (auto & data : batch) loss += DimRed_trainer::loss_reg(data);
+            optimizer.zero_grad();
+            loss.backward();
+            optimizer.step();
+        }
+        for (auto & batch : * deg_loader) {
+            at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
+            for (auto & data : batch) loss += DimRed_trainer::loss_deg(data);
+            optimizer.zero_grad();
+            loss.backward();
+            optimizer.step();
+        }
+        if (iepoch % follow == 0) {
+            double regRMSD_H, regRMSD_dH, degRMSD_H, degRMSD_dH;
+            std::tie(regRMSD_H, regRMSD_dH) = DimRed_trainer::RMSD_reg(RegSet->example());
+            std::tie(degRMSD_H, degRMSD_dH) = DimRed_trainer::RMSD_deg(DegSet->example());
+            std::cout << "epoch = " << iepoch << '\n'
+                      << "For regular data, RMSD(H) = " << regRMSD_H << ", RMSD(dH) = " << regRMSD_dH << '\n'
+                      << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << std::endl;
+            for (int i = 0; i < Hd::NStates; i++) {
+                torch::save(Hd::nets[i][i][0], "Hd" + std::to_string(i+1) + std::to_string(i+1)
+                    + "." + std::to_string(iepoch) + ".net");
+                for (int j = i + 1; j < Hd::NStates; j++)
+                for (int k = 0; k < Hd::nets[i][j].size(); k++)
+                torch::save(Hd::nets[i][j][k], "Hd" + std::to_string(i+1) + std::to_string(j+1) + "_" + std::to_string(k)
+                    + "." + std::to_string(iepoch) + ".net");
+            }
+            for (size_t irred = 0; irred < DimRed::nets.size(); irred++)
+            torch::save(DimRed::nets[irred], "DimRed" + std::to_string(irred+1) + "." + std::to_string(iepoch) + ".net");
+            torch::save(optimizer, "Hd." + std::to_string(iepoch) + ".opt");
+        }
+    }
+    else
+    for (size_t iepoch = 1; iepoch <= epoch; iepoch++) {
+        for (auto & batch : * reg_loader) {
+            at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
+            for (auto & data : batch) loss += loss_reg(data);
+            optimizer.zero_grad();
+            loss.backward();
+            optimizer.step();
+        }
+        for (auto & batch : * deg_loader) {
+            at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
+            for (auto & data : batch) loss += loss_deg(data);
+            optimizer.zero_grad();
+            loss.backward();
+            optimizer.step();
+        }
+        if (iepoch % follow == 0) {
+            double regRMSD_H, regRMSD_dH, degRMSD_H, degRMSD_dH;
+            std::tie(regRMSD_H, regRMSD_dH) = RMSD_reg(RegSet->example());
+            std::tie(degRMSD_H, degRMSD_dH) = RMSD_deg(DegSet->example());
+            std::cout << "epoch = " << iepoch << '\n'
+                      << "For regular data, RMSD(H) = " << regRMSD_H << ", RMSD(dH) = " << regRMSD_dH << '\n'
+                      << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << std::endl;
+            for (int i = 0; i < Hd::NStates; i++) {
+                torch::save(Hd::nets[i][i][0], "Hd" + std::to_string(i+1) + std::to_string(i+1)
+                    + "." + std::to_string(iepoch) + ".net");
+                for (int j = i + 1; j < Hd::NStates; j++)
+                for (int k = 0; k < Hd::nets[i][j].size(); k++)
+                torch::save(Hd::nets[i][j][k], "Hd" + std::to_string(i+1) + std::to_string(j+1) + "_" + std::to_string(k)
+                    + "." + std::to_string(iepoch) + ".net");
+            }
+            torch::save(optimizer, "Hd." + std::to_string(iepoch) + ".opt");
+        }
+    }
+}
+
 void train(const std::vector<double> & guess_diag, const size_t & freeze, const std::vector<std::string> & chk,
 const std::vector<std::string> & data_set, const bool & train_DimRed,
 const double & zero_point, const double & weight,
-const std::string & opt, const size_t & epoch, const size_t & batch_size, const double & learning_rate) {
+const std::string & opt, const size_t & epoch,
+const size_t & batch_size, const double & learning_rate, const bool & GPU) {
     std::cout << "Start training diabatic Hamiltonian\n";
     // Initialize network
     if (Hd::nets[0][0][0]->cold && (! guess_diag.empty())) {
@@ -1067,7 +1167,42 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
               << "For degenerate data, RMSD(H) = " << degRMSD_H << ", RMSD(dH) = " << degRMSD_dH << '\n';
     std::cout << std::endl;
     if (opt == "Adam" || opt == "SGD") {
-        // Not implemented
+        // Push nets and data to GPU
+        if (GPU && torch::cuda::is_available()) {
+            for (int i = 0; i < Hd::NStates; i++)
+            for (int j = i; j < Hd::NStates; j++)
+            for (auto & net : Hd::nets[i][j]) net->to(torch::kCUDA);
+            if (train_DimRed)
+            for (auto & net : DimRed::nets) net->to(torch::kCUDA);
+            RegSet->to(torch::kCUDA);
+            DegSet->to(torch::kCUDA);
+        }
+        // Concatenate network parameters
+        std::vector<at::Tensor> parameters;
+        for (int i = 0; i < Hd::NStates; i++)
+        for (int j = i; j < Hd::NStates; j++)
+        for (auto & net : Hd::nets[i][j]) {
+            std::vector<at::Tensor> par = net->parameters();
+            parameters.insert(parameters.end(), par.begin(), par.end());
+        }
+        if (train_DimRed)
+        for (auto & net : DimRed::nets) {
+            std::vector<at::Tensor> par = net->parameters();
+            parameters.insert(parameters.end(), par.begin(), par.end());
+        }
+        // Start optimization
+        if (opt == "Adam") {
+            torch::optim::Adam optimizer(parameters, learning_rate);
+            if (! chk.empty()) torch::load(optimizer, chk[0]);
+            opt_loop(train_DimRed, RegSet, DegSet, batch_size, optimizer, epoch);
+        }
+        else if (opt == "SGD") {
+            torch::optim::SGD optimizer(parameters,
+                torch::optim::SGDOptions(learning_rate)
+                .momentum(0.9).nesterov(true));
+            if (! chk.empty()) torch::load(optimizer, chk[0]);
+            opt_loop(train_DimRed, RegSet, DegSet, batch_size, optimizer, epoch);
+        }
     }
     else {
         FLopt::initialize(freeze, train_DimRed, RegSet->example(), DegSet->example());

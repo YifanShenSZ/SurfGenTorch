@@ -200,9 +200,8 @@ namespace FLopt {
         }
     }
 
-    void initialize(const std::shared_ptr<DimRed::Net> & net_,
-    const size_t & irred_, const size_t & freeze_,
-    const std::vector<AbInitio::geom *> & GeomSet_) {
+    void initialize(const size_t & irred_, const std::shared_ptr<DimRed::Net> & net_,
+    const size_t & freeze_, const std::vector<AbInitio::geom *> & GeomSet_) {
         OMP_NUM_THREADS = omp_get_max_threads();
         std::cout << "The number of threads = " << OMP_NUM_THREADS << '\n';
 
@@ -255,9 +254,39 @@ namespace FLopt {
     }
 } // namespace FLopt
 
+template <typename T> inline void opt_loop(
+const size_t & irred, const std::shared_ptr<DimRed::Net> & net,
+AbInitio::DataSet<AbInitio::geom> * GeomSet, const size_t & batch_size,
+T & optimizer, const size_t & epoch) {
+    auto geom_loader = torch::data::make_data_loader(* GeomSet,
+        torch::data::DataLoaderOptions(batch_size).drop_last(true));
+    std::cout << "batch size = " << batch_size << std::endl;
+    size_t follow = epoch / 10;
+    for (size_t iepoch = 1; iepoch <= epoch; iepoch++) {
+        for (auto & batch : * geom_loader) {
+            at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
+            for (auto & data : batch) {
+                loss += torch::mse_loss(
+                    net->forward(data->SSAq[irred]), data->SSAq[irred],
+                    at::Reduction::Sum);
+            }
+            optimizer.zero_grad();
+            loss.backward();
+            optimizer.step();
+        }
+        if (iepoch % follow == 0) {
+            std::cout << "epoch = " << iepoch
+                      << ", RMSD = " << RMSD(irred, net, GeomSet->example()) << std::endl;
+            torch::save(net, "DimRed." + std::to_string(iepoch) + ".net");
+            torch::save(optimizer, "DimRed." + std::to_string(iepoch) + ".opt");
+        }
+    }
+}
+
 void train(const size_t & irred, const size_t & freeze, const std::vector<std::string> & chk,
 const std::vector<std::string> & data_set,
-const std::string & opt, const size_t & epoch, const size_t & batch_size, const double & learning_rate) {
+const std::string & opt, const size_t & epoch,
+const size_t & batch_size, const double & learning_rate, const bool & GPU) {
     std::cout << "Start training dimensionality reduction for irreducible " << irred + 1 << '\n';
     // Initialize network
     auto & net = DimRed::nets[irred];
@@ -270,67 +299,27 @@ const std::string & opt, const size_t & epoch, const size_t & batch_size, const 
     std::cout << "RMSD = " << RMSD(irred, net, GeomSet->example()) << '\n';
     std::cout << std::endl;
     if (opt == "Adam" || opt == "SGD") {
-        // Create geometry set loader
-        auto geom_loader = torch::data::make_data_loader(* GeomSet,
-            torch::data::DataLoaderOptions(batch_size).drop_last(true));
-        std::cout << "batch size = " << batch_size << '\n';
+        // Push net and data to GPU
+        if (GPU && torch::cuda::is_available()) {
+            net->to(torch::kCUDA);
+            GeomSet->to(torch::kCUDA);
+        }
+        // Start optimization
         if (opt == "Adam") {
-            // Create optimizer
             torch::optim::Adam optimizer(net->parameters(), learning_rate);
             if (! chk.empty()) torch::load(optimizer, chk[0]);
-            // Start training
-            size_t follow = epoch / 10;
-            for (size_t iepoch = 1; iepoch <= epoch; iepoch++) {
-                for (auto & batch : * geom_loader) {
-                    at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
-                    for (auto & data : batch) {
-                        loss += torch::mse_loss(
-                            net->forward(data->SSAq[irred]), data->SSAq[irred],
-                            at::Reduction::Sum);
-                    }
-                    optimizer.zero_grad();
-                    loss.backward();
-                    optimizer.step();
-                }
-                if (iepoch % follow == 0) {
-                    std::cout << "epoch = " << iepoch
-                              << ", RMSD = " << RMSD(irred, net, GeomSet->example()) << std::endl;
-                    torch::save(net, "DimRed_"+std::to_string(iepoch)+".net");
-                    torch::save(optimizer, "DimRed_"+std::to_string(iepoch)+".opt");
-                }
-            }
+            opt_loop(irred, net, GeomSet, batch_size, optimizer, epoch);
         }
-        else {
-            // Create optimizer
+        else if (opt == "SGD") {
             torch::optim::SGD optimizer(net->parameters(),
                 torch::optim::SGDOptions(learning_rate)
                 .momentum(0.9).nesterov(true));
             if (! chk.empty()) torch::load(optimizer, chk[0]);
-            // Start training
-            size_t follow = epoch / 10;
-            for (size_t iepoch = 1; iepoch <= epoch; iepoch++) {
-                for (auto & batch : * geom_loader) {
-                    at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
-                    for (auto & data : batch) {
-                        loss += torch::mse_loss(
-                            net->forward(data->SSAq[irred]), data->SSAq[irred],
-                            at::Reduction::Sum);
-                    }
-                    optimizer.zero_grad();
-                    loss.backward();
-                    optimizer.step();
-                }
-                if (iepoch % follow == 0) {
-                    std::cout << "epoch = " << iepoch
-                              << ", RMSD = " << RMSD(irred, net, GeomSet->example()) << std::endl;
-                    torch::save(net, "DimRed_"+std::to_string(iepoch)+".net");
-                    torch::save(optimizer, "DimRed_"+std::to_string(iepoch)+".opt");
-                }
-            }
+            opt_loop(irred, net, GeomSet, batch_size, optimizer, epoch);
         }
     }
     else {
-        FLopt::initialize(net, irred, freeze, GeomSet->example());
+        FLopt::initialize(irred, net, freeze, GeomSet->example());
         FLopt::optimize(opt, epoch);
         std::cout << "RMSD = " << RMSD(irred, net, GeomSet->example()) << '\n';
         torch::save(net, "DimRed.net");

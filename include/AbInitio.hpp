@@ -30,6 +30,8 @@ class geom { public:
     geom();
     geom(const GeomLoader & loader);
     ~geom();
+
+    void to(const c10::DeviceType & device);
 };
 
 // Store Hamiltonian and gradient data
@@ -62,6 +64,7 @@ class RegHam : public geom { public:
     RegHam(const HamLoader & loader, const bool & train_DimRed);
     ~RegHam();
 
+    void to(const c10::DeviceType & device);
     void adjust_weight(const double & Ethresh);
 };
 
@@ -73,6 +76,8 @@ class DegHam : public RegHam { public:
     DegHam();
     DegHam(const HamLoader & loader, const bool & train_DimRed);
     ~DegHam();
+
+    void to(const c10::DeviceType & device);
 };
 
 template <class T> class DataSet : public torch::data::datasets::Dataset<DataSet<T>, T*> {
@@ -80,7 +85,7 @@ template <class T> class DataSet : public torch::data::datasets::Dataset<DataSet
         std::vector<T*> example_;
     public:
         inline DataSet(const std::vector<T*> & example) {example_ = example;}
-        inline ~DataSet() {for (T* & data : example_) delete [] data;}
+        inline ~DataSet() {}
 
         inline std::vector<T*> example() const {return example_;}
 
@@ -89,7 +94,10 @@ template <class T> class DataSet : public torch::data::datasets::Dataset<DataSet
         // Override the get method to load custom data
         inline T* get(size_t index) override {return example_[index];}
 
-        inline size_t size_int() const {return example_.size();}        
+        inline size_t size_int() const {return example_.size();}
+        inline void to(const c10::DeviceType & device) {
+            for (T* & data : example_) data->to(device);
+        }        
 };
 
 DataSet<geom> * read_GeomSet(const std::vector<std::string> & data_set);

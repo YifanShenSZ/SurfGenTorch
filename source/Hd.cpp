@@ -125,7 +125,6 @@ void define_Hd(const std::string & Hd_in) {
         // Network structure
         std::vector<std::vector<size_t>> dimss(NNets);
         std::getline(ifs, line);
-        std::getline(ifs, line); CL::utility::split(line, strs);
         for (size_t j = 0; j < NNets; j++) {
             std::getline(ifs, line); CL::utility::split(line, strs);
             auto & dims = dimss[j];
