@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # libtorch
-set(CMAKE_PREFIX_PATH ~/Software/Programming/libtorch-cpu-1.6.0)
+set(CMAKE_PREFIX_PATH ~/Software/Programming/libtorch-cuda10.1-1.6.0)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 add_library(CL STATIC
