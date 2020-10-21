@@ -35,7 +35,7 @@ geom::geom(const GeomLoader & loader) {
 }
 geom::~geom() {}
 void geom::to(const c10::DeviceType & device) {
-    for (at::Tensor & irred : SSAq) irred.to(device);
+    for (at::Tensor & irred : SSAq) irred = irred.to(device);
 }
 
 HamLoader::HamLoader() {}
@@ -104,12 +104,12 @@ RegHam::RegHam(const HamLoader & loader, const bool & train_DimRed) {
 }
 RegHam::~RegHam() {}
 void RegHam::to(const c10::DeviceType & device) {
-    for (at::Tensor & irred : SSAq) irred.to(device);
-    for (at::Tensor & irred : J_SSAq_r_T) irred.to(device);
-    for (at::Tensor & irred : input_layer) irred.to(device);
-    for (at::Tensor & irred : J_IL_r_T) irred.to(device);
-    energy.to(device);
-        dH.to(device);
+    for (at::Tensor & irred : SSAq)        irred = irred.to(device);
+    for (at::Tensor & irred : J_SSAq_r_T)  irred = irred.to(device);
+    for (at::Tensor & irred : input_layer) irred = irred.to(device);
+    for (at::Tensor & irred : J_IL_r_T)    irred = irred.to(device);
+    energy = energy.to(device);
+        dH =     dH.to(device);
 }
 void RegHam::adjust_weight(const double & Ethresh) {
     double temp = energy[0].item<double>();
@@ -127,13 +127,13 @@ DegHam::DegHam(const HamLoader & loader, const bool & train_DimRed) : RegHam(loa
 }
 DegHam::~DegHam() {}
 void DegHam::to(const c10::DeviceType & device) {
-    for (at::Tensor & irred : SSAq) irred.to(device);
-    for (at::Tensor & irred : J_SSAq_r_T) irred.to(device);
-    for (at::Tensor & irred : input_layer) irred.to(device);
-    for (at::Tensor & irred : J_IL_r_T) irred.to(device);
-    energy.to(device);
-        dH.to(device);
-         H.to(device);
+    for (at::Tensor & irred : SSAq)        irred = irred.to(device);
+    for (at::Tensor & irred : J_SSAq_r_T)  irred = irred.to(device);
+    for (at::Tensor & irred : input_layer) irred = irred.to(device);
+    for (at::Tensor & irred : J_IL_r_T)    irred = irred.to(device);
+    energy = energy.to(device);
+        dH =     dH.to(device);
+         H =      H.to(device);
 }
 
 DataSet<geom> * read_GeomSet(const std::vector<std::string> & data_set) {
