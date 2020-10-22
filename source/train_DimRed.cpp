@@ -264,7 +264,7 @@ T & optimizer, const size_t & epoch) {
     size_t follow = epoch / 10;
     for (size_t iepoch = 1; iepoch <= epoch; iepoch++) {
         for (auto & batch : * geom_loader) {
-            at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
+            at::Tensor loss = batch[0]->SSAq[irred].new_zeros({});
             for (auto & data : batch) {
                 loss += torch::mse_loss(
                     net->forward(data->SSAq[irred]), data->SSAq[irred],
@@ -301,6 +301,7 @@ const size_t & batch_size, const double & learning_rate, const bool & GPU) {
     if (opt == "Adam" || opt == "SGD") {
         // Push net and data to GPU
         if (GPU && torch::cuda::is_available()) {
+            std::cout << "Enable GPU acceleration\n";
             net->to(torch::kCUDA);
             GeomSet->to(torch::kCUDA);
         }

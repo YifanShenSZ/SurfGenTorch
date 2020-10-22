@@ -41,16 +41,16 @@ void geom::to(const c10::DeviceType & device) {
 HamLoader::HamLoader() {}
 HamLoader::HamLoader(const int64_t & NStates) {
     c10::TensorOptions top = at::TensorOptions().dtype(torch::kFloat64);
-    this->r      = at::empty(SSAIC::cartdim, top);
-    this->energy = at::empty(NStates, top);
-    this->dH     = at::empty({NStates, NStates, SSAIC::cartdim}, top);
+    r      = at::empty(SSAIC::cartdim, top);
+    energy = at::empty(NStates, top);
+    dH     = at::empty({NStates, NStates, SSAIC::cartdim}, top);
 }
 HamLoader::~HamLoader() {}
 void HamLoader::reset(const int64_t & NStates)  {
     c10::TensorOptions top = at::TensorOptions().dtype(torch::kFloat64);
-    this->r      = at::empty(SSAIC::cartdim, top);
-    this->energy = at::empty(NStates, top);
-    this->dH     = at::empty({NStates, NStates, SSAIC::cartdim}, top);
+    r      = at::empty(SSAIC::cartdim, top);
+    energy = at::empty(NStates, top);
+    dH     = at::empty({NStates, NStates, SSAIC::cartdim}, top);
 }
 // Subtract energy zero point
 void HamLoader::subtract_zero_point(const double & zero_point) {
@@ -131,9 +131,8 @@ void DegHam::to(const c10::DeviceType & device) {
     for (at::Tensor & irred : J_SSAq_r_T)  irred = irred.to(device);
     for (at::Tensor & irred : input_layer) irred = irred.to(device);
     for (at::Tensor & irred : J_IL_r_T)    irred = irred.to(device);
-    energy = energy.to(device);
-        dH =     dH.to(device);
-         H =      H.to(device);
+     H =   H.to(device);
+    dH = dH.to(device);
 }
 
 DataSet<geom> * read_GeomSet(const std::vector<std::string> & data_set) {

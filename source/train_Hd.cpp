@@ -1044,14 +1044,14 @@ T & optimizer, const size_t & epoch) {
     if (train_DimRed)
     for (size_t iepoch = 1; iepoch <= epoch; iepoch++) {
         for (auto & batch : * reg_loader) {
-            at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
+            at::Tensor loss = batch[0]->energy.new_zeros({});
             for (auto & data : batch) loss += DimRed_trainer::loss_reg(data);
             optimizer.zero_grad();
             loss.backward();
             optimizer.step();
         }
         for (auto & batch : * deg_loader) {
-            at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
+            at::Tensor loss = batch[0]->H.new_zeros({});
             for (auto & data : batch) loss += DimRed_trainer::loss_deg(data);
             optimizer.zero_grad();
             loss.backward();
@@ -1080,14 +1080,14 @@ T & optimizer, const size_t & epoch) {
     else
     for (size_t iepoch = 1; iepoch <= epoch; iepoch++) {
         for (auto & batch : * reg_loader) {
-            at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
+            at::Tensor loss = batch[0]->energy.new_zeros({});
             for (auto & data : batch) loss += loss_reg(data);
             optimizer.zero_grad();
             loss.backward();
             optimizer.step();
         }
         for (auto & batch : * deg_loader) {
-            at::Tensor loss = at::zeros({}, at::TensorOptions().dtype(torch::kFloat64));
+            at::Tensor loss = batch[0]->H.new_zeros({});
             for (auto & data : batch) loss += loss_deg(data);
             optimizer.zero_grad();
             loss.backward();
@@ -1169,6 +1169,7 @@ const size_t & batch_size, const double & learning_rate, const bool & GPU) {
     if (opt == "Adam" || opt == "SGD") {
         // Push nets and data to GPU
         if (GPU && torch::cuda::is_available()) {
+            std::cout << "Enable GPU acceleration\n";
             for (int i = 0; i < Hd::NStates; i++)
             for (int j = i; j < Hd::NStates; j++)
             for (auto & net : Hd::nets[i][j]) net->to(torch::kCUDA);

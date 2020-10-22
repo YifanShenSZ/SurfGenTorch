@@ -82,7 +82,7 @@ namespace CL { namespace TS { namespace LA {
             for (int a = b; a < N; a++) work[i][b] += U[a][i] * A[b][a];
         }
         // result_ijm = work_ibm * U_bj
-        at::Tensor result = at::zeros(A.sizes(), A.options());
+        at::Tensor result = A.new_zeros(A.sizes());
         for (int i = 0; i < N; i++)
         for (int j = i; j < N; j++)
         for (int b = 0; b < N; b++)

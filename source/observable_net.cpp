@@ -145,7 +145,7 @@ void define_PNR(const std::string & input_layer_in) {
 std::vector<at::Tensor> input_layer(const std::vector<at::Tensor> & x) {
     std::vector<at::Tensor> input_layer(PNR.size());
     for (size_t irred = 0; irred < PNR.size(); irred++) {
-        input_layer[irred] = at::empty(PNR[irred].size(), at::TensorOptions().dtype(torch::kFloat64));
+        input_layer[irred] = x[0].new_empty(PNR[irred].size(), at::TensorOptions().dtype(torch::kFloat64));
         for (size_t i = 0; i < PNR[irred].size(); i++) {
             input_layer[irred][i] = 1.0;
             for (size_t j = 0; j < PNR[irred][i].coord.size(); j++)
