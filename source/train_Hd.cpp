@@ -50,7 +50,7 @@ std::vector<at::Tensor> & input_layer, const std::vector<at::Tensor> & J_IL_r_T)
         }
     }
     // Disable gradient w.r.t. input layer to save CPU during loss.backward
-    for (auto & irred : input_layer) irred.set_requires_grad(false);
+    for (auto & irred : input_layer) irred.detach_();
     // Transform to adiabatic representation
     at::Tensor energy, state;
     std::tie(energy, state) = H.symeig(true);
@@ -179,7 +179,7 @@ namespace DimRed_trainer {
             for (size_t irred = 0; irred < SSAq.size(); irred++) dH[i][j] += J_SSAq_r_T[irred].mv(g[irred]);
         }
         // Disable gradient w.r.t. SSAq to save CPU during loss.backward
-        for (auto & irred : SSAq) irred.set_requires_grad(false);
+        for (auto & irred : SSAq) irred.detach_();
         // Transform to adiabatic representation
         at::Tensor energy, state;
         std::tie(energy, state) = H.symeig(true);
@@ -299,7 +299,7 @@ namespace FLopt {
             }
         }
         // Disable gradient w.r.t. input layer to save CPU during loss.backward
-        for (auto & irred : input_layer) irred.set_requires_grad(false);
+        for (auto & irred : input_layer) irred.detach_();
         // Transform to adiabatic representation
         at::Tensor energy, state;
         std::tie(energy, state) = H.symeig(true);
@@ -665,7 +665,7 @@ namespace FLopt {
                 for (size_t irred = 0; irred < SSAq.size(); irred++) dH[i][j] += J_SSAq_r_T[irred].mv(g[irred]);
             }
             // Disable gradient w.r.t. SSAq to save CPU during loss.backward
-            for (auto & irred : SSAq) irred.set_requires_grad(false);
+            for (auto & irred : SSAq) irred.detach_();
             // Transform to adiabatic representation
             at::Tensor energy, state;
             std::tie(energy, state) = H.symeig(true);

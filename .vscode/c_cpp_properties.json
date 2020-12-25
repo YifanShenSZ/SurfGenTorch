@@ -3,8 +3,8 @@
         {
             "name": "Linux",
             "includePath": [
-                "~/Software/Programming/libtorch-cpu-1.4.0/include/**",
-                "Cpp-Library_v1.0.0",
+                "~/Software/Programming/libtorch-cuda10.1-1.7.1/include/**",
+                "Cpp-Library",
                 "include",
                 "tools/libSGT"
             ],
